@@ -1,0 +1,2 @@
+-- Optional: enable extensions for production monitoring
+-- CREATE EXTENSION IF NOT EXISTS pg_stat_statements;

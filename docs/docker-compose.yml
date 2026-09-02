@@ -1,0 +1,6 @@
+# Deprecated — use the root docker-compose.yml instead.
+#
+# This file is kept for reference only. The canonical Docker setup lives at:
+#   ../docker-compose.yml
+#
+# See DOCKER.md for full deployment instructions.
