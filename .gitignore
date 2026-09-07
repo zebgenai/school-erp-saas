@@ -13,3 +13,4 @@ node_modules/
 /backend/uploads/
 backend/dist/
 frontend/dist/
+*.tsbuildinfo
