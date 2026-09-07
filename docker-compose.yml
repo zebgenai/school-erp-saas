@@ -46,16 +46,20 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
+      HOST: 0.0.0.0
       PORT: 3000
       DATABASE_URL: postgresql://${POSTGRES_USER:-clevercampus}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-school_erp_saas}?schema=public
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
       JWT_REFRESH_EXPIRES_DAYS: ${JWT_REFRESH_EXPIRES_DAYS:-7}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+      OTP_PEPPER: ${OTP_PEPPER:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:?Set CORS_ORIGINS in .env}
+      FRONTEND_URL: ${FRONTEND_URL:?Set FRONTEND_URL in .env}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      UPLOAD_DIR: /app/uploads
       EMAIL_PROVIDER: ${EMAIL_PROVIDER:-resend}
       EMAIL_FROM: ${EMAIL_FROM:-}
+      EMAIL_API_KEY: ${EMAIL_API_KEY:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM: ${RESEND_FROM:-}
       SMTP_HOST: ${SMTP_HOST:-}
@@ -74,7 +78,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 120s
 
   frontend:
     build:
@@ -86,6 +90,9 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    environment:
+      NODE_ENV: production
+      API_PROXY_TARGET: http://backend:3000
     networks:
       - clever_campus_net
     healthcheck:

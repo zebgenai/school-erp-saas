@@ -1,0 +1,16 @@
+node_modules
+dist
+dist-ssr
+.output
+.vinxi
+.tanstack
+.nitro
+.env
+.env.*
+!.env.example
+npm-debug.log*
+.git
+.gitignore
+*.md
+.vscode
+coverage

@@ -153,15 +153,18 @@ npm run docker:clean
 
 ### 2. Environment
 
-Set production URLs in `.env`:
+Copy `.env.example` to `.env` and set production values:
 
 ```env
-FRONTEND_URL=https://app.yourdomain.com
-CORS_ORIGINS=https://app.yourdomain.com
+FRONTEND_URL=https://YOUR_DOMAIN
+BACKEND_URL=https://YOUR_DOMAIN/api
+CORS_ORIGINS=https://YOUR_DOMAIN
 VITE_API_URL=/api
-POSTGRES_PASSWORD=<strong-password>
+POSTGRES_PASSWORD=<hex-or-alphanumeric-password>
 JWT_SECRET=<64-char-random-secret>
 ```
+
+`POSTGRES_PASSWORD` is placed inside `DATABASE_URL`. Use `openssl rand -hex 24` so the URL stays valid.
 
 Configure SMTP for email notifications:
 
@@ -198,10 +201,19 @@ See also `deploy/nginx/clever-campus.conf` for host-level nginx (non-Docker) dep
 
 ### 4. Deploy
 
+Enable Docker on boot, then build and start:
+
 ```bash
-docker compose build --no-cache
+sudo systemctl enable docker
+docker compose build
 docker compose up -d
 docker compose ps
+```
+
+Prisma migrations run automatically on backend startup (`prisma migrate deploy`). To run them manually:
+
+```bash
+docker compose exec backend ./node_modules/.bin/prisma migrate deploy
 ```
 
 ### 5. Seed data (first run only)
@@ -233,7 +245,7 @@ Database migrations run automatically on backend startup (`prisma migrate deploy
 ### PostgreSQL
 
 ```bash
-docker compose exec postgres pg_dump -U clevercampus school_erp_saas > backup_$(date +%Y%m%d).sql
+docker compose exec -T postgres pg_dump -U clevercampus school_erp_saas > backup_$(date +%Y%m%d).sql
 ```
 
 Or use the included script:
@@ -261,7 +273,7 @@ cat backup.sql | docker compose exec -T postgres psql -U clevercampus school_erp
 
 ### `docker compose config` fails
 
-- Ensure `.env` exists with `POSTGRES_PASSWORD` and `JWT_SECRET` set.
+- Ensure `.env` exists with `POSTGRES_PASSWORD`, `JWT_SECRET`, `FRONTEND_URL`, and `CORS_ORIGINS` set.
 
 ### Backend unhealthy / won't start
 
