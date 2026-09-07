@@ -9,6 +9,7 @@ frontend/.env.production
 !**/.env.production.example
 *.log
 node_modules/
-uploads/
+/uploads/
+/backend/uploads/
 backend/dist/
 frontend/dist/
