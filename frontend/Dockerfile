@@ -20,9 +20,9 @@ WORKDIR /app
 
 RUN apk add --no-cache nginx wget \
   && mkdir -p /run/nginx /usr/share/nginx/html \
-  && rm -f /etc/nginx/conf.d/default.conf
+  && rm -f /etc/nginx/http.d/default.conf /etc/nginx/conf.d/default.conf
 
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/http.d/default.conf
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
