@@ -26,6 +26,11 @@ COPY nginx.conf /etc/nginx/http.d/default.conf
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
+# SSR bundle (Nitro/TanStack) externalizes packages such as h3-v2.
+# Install production node_modules from the lockfile so Node can resolve them.
+COPY package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
 COPY --from=builder /app/dist/client /usr/share/nginx/html
 COPY --from=builder /app/dist/server /app/dist/server
 COPY scripts/docker-server.mjs /app/scripts/docker-server.mjs
