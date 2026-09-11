@@ -9,6 +9,7 @@ import { homeRouteForRole } from "@/lib/permissions";
 import { resolvePublicLogoSrc, usePublicSchoolBranding } from "@/lib/school-branding";
 import { useAppHost } from "@/lib/use-app-host";
 import { AuthBrandHeader } from "@/components/auth/AuthBrandHeader";
+import { UnknownSchool } from "@/components/auth/UnknownSchool";
 import { Button } from "@/components/form";
 import { toast } from "sonner";
 
@@ -39,8 +40,9 @@ function LoginPage() {
   }, []);
 
   useEffect(() => {
+    if (host.mode === "school" && (brandLoading || missing || !branding)) return;
     if (user) router.navigate({ to: homeRouteForRole(user.role) });
-  }, [user, router]);
+  }, [user, router, host.mode, brandLoading, missing, branding]);
 
   const copy = useMemo(() => {
     if (host.mode === "admin") {
@@ -117,7 +119,26 @@ function LoginPage() {
     }
   };
 
-  const showSchoolMissing = host.ready && host.mode === "school" && !brandLoading && missing;
+  if (host.mode === "pending") {
+    return (
+      <div className="min-h-screen grid place-items-center">
+        <div className="size-10 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
+  if (host.mode === "school") {
+    if (brandLoading || (!branding && !missing)) {
+      return (
+        <div className="min-h-screen grid place-items-center">
+          <div className="size-10 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+        </div>
+      );
+    }
+    if (missing || !branding) {
+      return <UnknownSchool />;
+    }
+  }
 
   return (
     <div className="min-h-screen relative overflow-hidden bg-sidebar grid place-items-center px-4">
@@ -138,26 +159,7 @@ function LoginPage() {
             variant={copy.variant}
           />
 
-          {showSchoolMissing ? (
-            <>
-              <h1 className="text-2xl font-semibold tracking-tight">School not found</h1>
-              <p className="text-sm text-muted-foreground mt-2">
-                This address is not an active Clever Campus school. Check the link from your administrator.
-              </p>
-              <a
-                href="https://clevercampus.cloud"
-                className="inline-flex mt-6 text-sm font-medium text-primary hover:underline"
-              >
-                Go to Clever Campus
-              </a>
-            </>
-          ) : host.mode === "school" && brandLoading ? (
-            <div className="py-10 grid place-items-center">
-              <div className="size-10 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-            </div>
-          ) : (
-            <>
-              <h1 className="text-2xl font-semibold tracking-tight">{copy.heading}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{copy.heading}</h1>
               <p className="text-sm text-muted-foreground mt-1">{copy.description}</p>
 
               {wrongHost && (
@@ -247,8 +249,6 @@ function LoginPage() {
                   ? "Platform operators only. School staff should use their school subdomain."
                   : "Trouble signing in? Contact your school administrator."}
               </div>
-            </>
-          )}
         </div>
       </motion.div>
     </div>
