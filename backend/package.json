@@ -15,7 +15,9 @@
     "prisma:studio": "prisma studio",
     "seed": "ts-node prisma/seed.ts",
     "seed:perf": "ts-node prisma/seed-performance.ts",
-    "benchmark": "ts-node scripts/benchmark.ts"
+    "benchmark": "ts-node scripts/benchmark.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.build.json",
+    "test": "node --require ts-node/register --test src/common/tenant/tenant.phase1.spec.ts src/schools/public-school-branding.spec.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

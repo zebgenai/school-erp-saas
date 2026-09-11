@@ -27,6 +27,10 @@ import {
   PermKey,
 } from '../roles/roles.constants';
 import { assertStrongPassword } from '../common/validators/password.validator';
+import {
+  allocateUniqueSchoolSlug,
+  schoolTenantDomain,
+} from '../common/tenant/school-slug';
 
 @Injectable()
 export class SuperAdminService {
@@ -415,7 +419,7 @@ export class SuperAdminService {
     currentUser: CurrentUser,
   ) {
     const existing = await this.prisma.school.findFirst({
-      where: { OR: [{ name: dto.name }, { slug: this.toSlug(dto.name) }] },
+      where: { name: dto.name },
     });
     if (existing) throw new ConflictException(`School "${dto.name}" already exists`);
 
@@ -423,12 +427,21 @@ export class SuperAdminService {
     if (adminExists) throw new ConflictException(`Email "${dto.adminEmail}" is already in use`);
 
     const hashed = await bcrypt.hash(dto.adminPassword, 10);
+    const slug = await allocateUniqueSchoolSlug(dto.name, async (candidate) => {
+      const found = await this.prisma.school.findFirst({
+        where: { OR: [{ slug: candidate }, { domain: schoolTenantDomain(candidate) }] },
+        select: { id: true },
+      });
+      return Boolean(found);
+    });
+    const domain = schoolTenantDomain(slug);
 
     const school = await this.prisma.$transaction(async (tx) => {
       const s = await tx.school.create({
         data: {
           name:     dto.name,
-          slug:     this.toSlug(dto.name),
+          slug,
+          domain,
           address:  dto.address,
           phone:    dto.phone,
           email:    dto.email,
@@ -1316,10 +1329,6 @@ export class SuperAdminService {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
     return user;
-  }
-
-  private toSlug(name: string): string {
-    return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Date.now().toString(36);
   }
 
   private mergeRolePermissions(role: UserRole, override?: Record<string, boolean>): Record<string, boolean> {

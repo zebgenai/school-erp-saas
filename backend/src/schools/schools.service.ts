@@ -1,22 +1,55 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, StreamableFile } from '@nestjs/common';
+import * as fsSync from 'fs';
+import * as path from 'path';
+import {
+  allocateUniqueSchoolSlug,
+  schoolTenantDomain,
+} from '../common/tenant/school-slug';
+import { resolveUploadDiskPath } from '../common/utils/upload-path';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSchoolDto } from './dto-create-school';
 import { UpdateSchoolDto } from './dto-update-school';
+import { toPublicSchoolBranding } from './public-school-branding';
 
 @Injectable()
 export class SchoolsService {
   constructor(private prisma: PrismaService) {}
 
   async create(dto: CreateSchoolDto) {
-    const existing = await this.prisma.school.findFirst({
-      where: { OR: [{ slug: dto.slug }, ...(dto.domain ? [{ domain: dto.domain }] : [])] },
-    });
+    const slug = await allocateUniqueSchoolSlug(dto.name, (candidate) =>
+      this.schoolSlugOrDomainTaken(candidate),
+    );
+    const domain = schoolTenantDomain(slug);
 
-    if (existing) {
-      throw new ConflictException('School slug or domain already exists');
+    const existingName = await this.prisma.school.findFirst({
+      where: { name: dto.name },
+      select: { id: true },
+    });
+    if (existingName) {
+      throw new ConflictException(`School "${dto.name}" already exists`);
     }
 
-    return this.prisma.school.create({ data: dto });
+    return this.prisma.school.create({
+      data: {
+        name: dto.name,
+        slug,
+        domain,
+        ownerName: dto.ownerName,
+        address: dto.address,
+        phone: dto.phone,
+        email: dto.email,
+        logoUrl: dto.logoUrl,
+        themeColor: dto.themeColor,
+      },
+    });
+  }
+
+  private async schoolSlugOrDomainTaken(slug: string): Promise<boolean> {
+    const found = await this.prisma.school.findFirst({
+      where: { OR: [{ slug }, { domain: schoolTenantDomain(slug) }] },
+      select: { id: true },
+    });
+    return Boolean(found);
   }
 
   async findAll() {
@@ -27,6 +60,51 @@ export class SchoolsService {
     const school = await this.prisma.school.findUnique({ where: { id } });
     if (!school) throw new NotFoundException('School not found');
     return school;
+  }
+
+  async findPublicBranding(slug: string) {
+    const school = await this.prisma.school.findUnique({
+      where: { slug },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        logoUrl: true,
+        themeColor: true,
+        status: true,
+      },
+    });
+    const branding = school ? toPublicSchoolBranding(school) : null;
+    if (!branding) throw new NotFoundException('School not found');
+    return branding;
+  }
+
+  async streamPublicLogo(slug: string) {
+    const school = await this.prisma.school.findUnique({
+      where: { slug },
+      select: { logoUrl: true, status: true },
+    });
+    if (!school || school.status !== 'ACTIVE' || !school.logoUrl) {
+      throw new NotFoundException('School logo not found');
+    }
+    if (/^https?:\/\//i.test(school.logoUrl)) {
+      throw new NotFoundException('School logo not found');
+    }
+    const diskPath = resolveUploadDiskPath(school.logoUrl);
+    if (!diskPath) throw new NotFoundException('School logo not found');
+    const ext = path.extname(diskPath).toLowerCase();
+    const mime =
+      ext === '.png'
+        ? 'image/png'
+        : ext === '.webp'
+          ? 'image/webp'
+          : ext === '.gif'
+            ? 'image/gif'
+            : 'image/jpeg';
+    return new StreamableFile(fsSync.createReadStream(diskPath), {
+      type: mime,
+      disposition: `inline; filename="${path.basename(diskPath)}"`,
+    });
   }
 
   async update(id: string, dto: UpdateSchoolDto) {

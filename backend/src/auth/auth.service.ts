@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { AuditAction, UserStatus } from '@prisma/client';
+import { AuditAction, UserRole, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
@@ -18,6 +18,8 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationEngineService } from '../notifications/notification-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RolesService } from '../roles/roles.service';
+import { isTenantLoginRejected } from '../common/tenant/tenant-login';
+import type { TenantSchool } from '../common/tenant/tenant.types';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto } from './dto-login';
 import {
@@ -49,13 +51,18 @@ export class AuthService {
   private static readonly MAX_ATTEMPTS = 5;
   private static readonly LOCKOUT_MINUTES = 15;
 
-  async login(dto: LoginDto, ipAddress?: string, userAgent?: string) {
+  async login(
+    dto: LoginDto,
+    ipAddress?: string,
+    userAgent?: string,
+    tenantSchool?: TenantSchool | null,
+  ) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email.toLowerCase() },
       include: { school: true },
     });
 
-    if (!user) {
+    if (isTenantLoginRejected(user, tenantSchool?.id) || !user) {
       throw new UnauthorizedException('Invalid email or password');
     }
 
@@ -112,7 +119,13 @@ export class AuthService {
     return this.completeLogin(user, ipAddress, userAgent, 'password');
   }
 
-  async verifyLoginOtp(challengeId: string, code: string, ipAddress?: string, userAgent?: string) {
+  async verifyLoginOtp(
+    challengeId: string,
+    code: string,
+    ipAddress?: string,
+    userAgent?: string,
+    tenantSchool?: TenantSchool | null,
+  ) {
     const trimmed = String(code || '').trim();
     if (!isValidOtpCode(trimmed)) {
       throw new BadRequestException('Enter the 6-digit code from your email');
@@ -138,6 +151,7 @@ export class AuthService {
     }
 
     this.assertUserCanAuthenticate(challenge.user);
+    this.assertLoginTenant(challenge.user, tenantSchool);
 
     const candidate = hashOtpCode(this.otpPepper(), challenge.id, trimmed);
     const maxAttempts = challenge.maxAttempts || OTP_MAX_ATTEMPTS;
@@ -170,7 +184,12 @@ export class AuthService {
     return this.completeLogin(challenge.user, ipAddress, userAgent, 'email_otp');
   }
 
-  async resendLoginOtp(challengeId: string, ipAddress?: string, userAgent?: string) {
+  async resendLoginOtp(
+    challengeId: string,
+    ipAddress?: string,
+    userAgent?: string,
+    tenantSchool?: TenantSchool | null,
+  ) {
     const challenge = await this.prisma.loginOtpChallenge.findUnique({
       where: { id: challengeId },
       include: { user: true },
@@ -180,6 +199,7 @@ export class AuthService {
     }
 
     this.assertUserCanAuthenticate(challenge.user);
+    this.assertLoginTenant(challenge.user, tenantSchool);
 
     const waitMs = OTP_RESEND_COOLDOWN_MS - (Date.now() - challenge.lastSentAt.getTime());
     if (waitMs > 0) {
@@ -219,7 +239,7 @@ export class AuthService {
     };
   }
 
-  async refresh(refreshToken: string, ipAddress?: string) {
+  async refresh(refreshToken: string, ipAddress?: string, tenantSchool?: TenantSchool | null) {
     const hash = this.hashToken(refreshToken);
     const stored = await this.prisma.refreshToken.findUnique({
       where: { tokenHash: hash },
@@ -234,6 +254,7 @@ export class AuthService {
     if (user.status !== UserStatus.ACTIVE) {
       throw new ForbiddenException('User account is inactive');
     }
+    this.assertLoginTenant(user, tenantSchool);
 
     await this.prisma.refreshToken.update({
       where: { id: stored.id },
@@ -477,6 +498,15 @@ export class AuthService {
       throw new ForbiddenException(
         `Account locked due to too many failed attempts. Try again in ${minutesLeft} minute(s).`,
       );
+    }
+  }
+
+  private assertLoginTenant(
+    user: { role: UserRole; schoolId?: string | null },
+    tenantSchool?: TenantSchool | null,
+  ) {
+    if (isTenantLoginRejected(user, tenantSchool?.id)) {
+      throw new UnauthorizedException('Invalid email or password');
     }
   }
 

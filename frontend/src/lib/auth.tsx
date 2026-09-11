@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, tokenStore, setUnauthorizedHandler, logoutApi } from "./api";
 import { otpChallengeStore } from "./otp-challenge";
+import { applySchoolTheme } from "./school-branding";
 
 export type AuthUser = {
   id?: string;
@@ -8,7 +9,13 @@ export type AuthUser = {
   email?: string;
   role?: string;
   schoolId?: string;
-  school?: { id?: string; name?: string; logoUrl?: string | null } | null;
+  school?: {
+    id?: string;
+    name?: string;
+    slug?: string;
+    logoUrl?: string | null;
+    themeColor?: string | null;
+  } | null;
   schoolName?: string;
   forcePasswordChange?: boolean;
   permissions?: Record<string, boolean>;
@@ -58,7 +65,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchMe = useCallback(async () => {
     try {
       const data = await api.get<{ user?: AuthUser; data?: AuthUser } & AuthUser>("/auth/me");
-      setUser(data?.user || data?.data || data);
+      const next = data?.user || data?.data || data;
+      setUser(next);
+      applySchoolTheme(next?.school?.themeColor);
     } catch {
       setUser(null);
     }
@@ -118,6 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     otpChallengeStore.clear();
+    applySchoolTheme(null);
     logoutApi().finally(() => {
       setUser(null);
       if (typeof window !== "undefined") window.location.href = "/login";

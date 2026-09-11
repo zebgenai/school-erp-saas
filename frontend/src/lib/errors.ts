@@ -89,7 +89,12 @@ export function formatApiError(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 0) return "Unable to connect. Please check your internet connection.";
     if (error.status === 401) return "Your session has expired. Please sign in again.";
-    if (error.status === 403) return "You do not have permission to perform this action.";
+    if (error.status === 403) {
+      if (/another school's data/i.test(String(error.message))) {
+        return "This account belongs to a different school. Sign in on your school's site.";
+      }
+      return "You do not have permission to perform this action.";
+    }
     if (error.status === 404) return "The requested record could not be found.";
     if (error.status === 409) return "This record already exists or conflicts with existing data.";
     if (error.status === 429) {

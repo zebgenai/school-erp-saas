@@ -5,9 +5,11 @@ export class CreateSchoolDto {
   @MinLength(2)
   name: string;
 
+  /** Ignored on create; slug is generated from `name`. Kept for older API clients. */
+  @IsOptional()
   @IsString()
   @MinLength(2)
-  slug: string;
+  slug?: string;
 
   @IsOptional()
   @IsString()

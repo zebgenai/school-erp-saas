@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Headers, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Post, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { ClientIp } from '../common/decorators/client-ip.decorator';
 import { CurrentUserDecorator } from '../common/decorators/current-user.decorator';
@@ -23,9 +24,10 @@ export class AuthController {
   login(
     @Body() dto: LoginDto,
     @ClientIp() ip: string,
+    @Req() req: Request,
     @Headers('user-agent') userAgent?: string,
   ) {
-    return this.authService.login(dto, ip, userAgent);
+    return this.authService.login(dto, ip, userAgent, req.tenantSchool ?? null);
   }
 
   @SkipForcePassword()
@@ -34,9 +36,16 @@ export class AuthController {
   verifyOtp(
     @Body() dto: VerifyOtpDto,
     @ClientIp() ip: string,
+    @Req() req: Request,
     @Headers('user-agent') userAgent?: string,
   ) {
-    return this.authService.verifyLoginOtp(dto.challengeId, dto.code, ip, userAgent);
+    return this.authService.verifyLoginOtp(
+      dto.challengeId,
+      dto.code,
+      ip,
+      userAgent,
+      req.tenantSchool ?? null,
+    );
   }
 
   @SkipForcePassword()
@@ -45,9 +54,16 @@ export class AuthController {
   verifyLoginOtp(
     @Body() dto: VerifyOtpDto,
     @ClientIp() ip: string,
+    @Req() req: Request,
     @Headers('user-agent') userAgent?: string,
   ) {
-    return this.authService.verifyLoginOtp(dto.challengeId, dto.code, ip, userAgent);
+    return this.authService.verifyLoginOtp(
+      dto.challengeId,
+      dto.code,
+      ip,
+      userAgent,
+      req.tenantSchool ?? null,
+    );
   }
 
   @SkipForcePassword()
@@ -56,9 +72,15 @@ export class AuthController {
   resendOtp(
     @Body() dto: ResendOtpDto,
     @ClientIp() ip: string,
+    @Req() req: Request,
     @Headers('user-agent') userAgent?: string,
   ) {
-    return this.authService.resendLoginOtp(dto.challengeId, ip, userAgent);
+    return this.authService.resendLoginOtp(
+      dto.challengeId,
+      ip,
+      userAgent,
+      req.tenantSchool ?? null,
+    );
   }
 
   @SkipForcePassword()
@@ -67,16 +89,22 @@ export class AuthController {
   resendLoginOtp(
     @Body() dto: ResendOtpDto,
     @ClientIp() ip: string,
+    @Req() req: Request,
     @Headers('user-agent') userAgent?: string,
   ) {
-    return this.authService.resendLoginOtp(dto.challengeId, ip, userAgent);
+    return this.authService.resendLoginOtp(
+      dto.challengeId,
+      ip,
+      userAgent,
+      req.tenantSchool ?? null,
+    );
   }
 
   @SkipForcePassword()
   @Throttle({ short: { limit: 10, ttl: 60000 } })
   @Post('refresh')
-  refresh(@Body() dto: RefreshTokenDto, @ClientIp() ip: string) {
-    return this.authService.refresh(dto.refreshToken, ip);
+  refresh(@Body() dto: RefreshTokenDto, @ClientIp() ip: string, @Req() req: Request) {
+    return this.authService.refresh(dto.refreshToken, ip, req.tenantSchool ?? null);
   }
 
   @SkipForcePassword()

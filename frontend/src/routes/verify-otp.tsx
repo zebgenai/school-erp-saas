@@ -1,11 +1,14 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, CheckCircle2, Mail, School } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { otpChallengeStore } from "@/lib/otp-challenge";
 import { homeRouteForRole } from "@/lib/permissions";
+import { resolvePublicLogoSrc, usePublicSchoolBranding } from "@/lib/school-branding";
+import { useAppHost } from "@/lib/use-app-host";
+import { AuthBrandHeader } from "@/components/auth/AuthBrandHeader";
 import { Button } from "@/components/form";
 
 export const Route = createFileRoute("/verify-otp")({
@@ -16,6 +19,9 @@ export const Route = createFileRoute("/verify-otp")({
 function VerifyOtpPage() {
   const { verifyOtp, resendOtp, user } = useAuth();
   const router = useRouter();
+  const host = useAppHost();
+  const schoolSlug = host.ready && host.mode === "school" ? host.slug : null;
+  const { branding } = usePublicSchoolBranding(schoolSlug);
   const challenge = otpChallengeStore.get();
   const [digits, setDigits] = useState(["", "", "", "", "", ""]);
   const [loading, setLoading] = useState(false);
@@ -133,15 +139,16 @@ function VerifyOtpPage() {
         className="relative w-full max-w-md"
       >
         <div className="bg-card/90 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-lift">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="size-12 rounded-2xl bg-gradient-primary grid place-items-center shadow-soft">
-              <School className="size-6 text-primary-foreground" />
-            </div>
-            <div>
-              <div className="font-bold text-lg leading-tight">School ERP</div>
-              <div className="text-xs text-muted-foreground">Email verification</div>
-            </div>
-          </div>
+          <AuthBrandHeader
+            title={
+              host.mode === "admin"
+                ? "Clever Campus"
+                : branding?.name || "School ERP"
+            }
+            subtitle="Email verification"
+            logoSrc={branding ? resolvePublicLogoSrc(branding.logo, branding.slug) : null}
+            variant={host.mode === "admin" ? "admin" : branding ? "school" : "default"}
+          />
 
           {success ? (
             <div className="text-center py-6">

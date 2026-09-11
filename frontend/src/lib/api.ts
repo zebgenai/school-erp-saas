@@ -1,5 +1,6 @@
 // Central API client for School ERP
 import { ApiError, formatApiError } from "./errors";
+import { markWrongHost } from "./host";
 
 export { ApiError } from "./errors";
 
@@ -139,7 +140,7 @@ async function request<T = any>(
     throw new ApiError(e?.message || "Network error", 0);
   }
 
-  if (res.status === 401 && !opts?.retry && path !== "/auth/refresh" && path !== "/auth/login" && path !== "/auth/verify-otp" && path !== "/auth/resend-otp" && path !== "/auth/verify-login-otp" && path !== "/auth/resend-login-otp") {
+  if (res.status === 401 && !opts?.retry && path !== "/auth/refresh" && path !== "/auth/login" && path !== "/auth/verify-otp" && path !== "/auth/resend-otp" && path !== "/auth/verify-login-otp" && path !== "/auth/resend-login-otp" && !path.startsWith("/public/")) {
     const newToken = await tryRefreshToken();
     if (newToken) {
       return request<T>(method, path, body, { ...opts, retry: true });
@@ -150,8 +151,10 @@ async function request<T = any>(
   }
 
   if (res.status === 401) {
-    tokenStore.clear();
-    onUnauthorized?.();
+    if (!path.startsWith("/public/")) {
+      tokenStore.clear();
+      onUnauthorized?.();
+    }
     throw new ApiError("Unauthorized", 401);
   }
 
@@ -162,6 +165,11 @@ async function request<T = any>(
     let msg: any = (data && (data.message || data.error)) || `Request failed (${res.status})`;
     if (Array.isArray(msg)) msg = msg[0] ?? msg.join(", ");
     else if (typeof msg !== "string") msg = JSON.stringify(msg);
+    if (res.status === 403 && /another school's data/i.test(String(msg))) {
+      tokenStore.clear();
+      markWrongHost();
+      onUnauthorized?.();
+    }
     const err = new ApiError(String(msg), res.status, data);
     err.message = formatApiError(err);
     throw err;

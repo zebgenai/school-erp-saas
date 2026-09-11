@@ -9,6 +9,9 @@ import {
 } from "lucide-react";
 import { resolveFileUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { schoolLoginOrigin } from "@/lib/host";
+import { useAppHost } from "@/lib/use-app-host";
+import { applySchoolTheme } from "@/lib/school-branding";
 import { usePermissions, homeRouteForRole, isPlatformStaff, roleDisplayName, type Permission } from "@/lib/permissions";
 import { otpChallengeStore } from "@/lib/otp-challenge";
 import { cn } from "@/lib/utils";
@@ -114,12 +117,18 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { can, canRoute } = usePermissions();
+  const host = useAppHost();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const routeAllowed = user ? canRoute(pathname) : false;
 
   useEffect(() => { setMobileOpen(false); }, [pathname]);
+
+  useEffect(() => {
+    if (!user?.school?.themeColor) return;
+    applySchoolTheme(user.school.themeColor);
+  }, [user?.school?.themeColor]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -143,6 +152,43 @@ export function AppShell({ children }: { children: ReactNode }) {
   if (!user) return null;
 
   const isSuperAdmin = isPlatformStaff(user.role);
+  const wrongSchoolHost =
+    host.ready &&
+    host.mode === "school" &&
+    !isSuperAdmin &&
+    Boolean(user.school?.slug) &&
+    user.school?.slug !== host.slug;
+
+  if (wrongSchoolHost) {
+    const home = user.school?.slug ? `${schoolLoginOrigin(user.school.slug)}/login` : "/login";
+    return (
+      <div className="min-h-screen grid place-items-center bg-background px-4">
+        <div className="max-w-md text-center rounded-3xl border bg-card p-8 shadow-lift">
+          <h1 className="text-xl font-semibold">Wrong school site</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            You are signed in to {user.school?.name || "another school"}, but this address is for a different campus.
+            The server will not load that school&apos;s data here.
+          </p>
+          <div className="mt-6 flex flex-col sm:flex-row gap-2 justify-center">
+            <button
+              type="button"
+              onClick={logout}
+              className="px-4 py-2 rounded-xl border text-sm font-medium hover:bg-muted"
+            >
+              Sign out
+            </button>
+            <a
+              href={home}
+              className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium"
+            >
+              Go to your school
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const isOwner = user.role === "SUPER_ADMIN";
   const isParent     = user.role === "PARENT";
   const isTeacher    = user.role === "TEACHER";
