@@ -191,7 +191,8 @@ function Dashboard() {
               normalizeChart(attChart.data, ["date", "present"]).length === 0 ? (
                 <EmptyState icon={CalendarCheck} title="No attendance data yet" description="Attendance trends will appear once daily attendance is marked." />
               ) : (
-              <ResponsiveContainer>
+              <ChartSuspense height="18rem">
+              <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={normalizeChart(attChart.data, ["date", "present"])}>
                   <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.92 0.01 250)" />
                   <XAxis dataKey="label" tick={{ fontSize: 11 }} />
@@ -200,6 +201,7 @@ function Dashboard() {
                   <Bar dataKey="value" fill="oklch(0.65 0.16 155)" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
+              </ChartSuspense>
             )}
           </div>
         </Card>
@@ -214,7 +216,8 @@ function Dashboard() {
         </div>
         <div className="h-72">
           {profitLoss.loading ? <Skeleton className="h-full w-full" /> : (
-            <ResponsiveContainer>
+            <ChartSuspense height="18rem">
+            <ResponsiveContainer width="100%" height="100%">
               <LineChart data={normalizeProfitLoss(profitLoss.data)}>
                 <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.92 0.01 250)" />
                 <XAxis dataKey="label" tick={{ fontSize: 12 }} />
@@ -225,6 +228,7 @@ function Dashboard() {
                 <Line type="monotone" dataKey="salary" stroke="oklch(0.55 0.18 320)" strokeWidth={2} name="Salary" />
               </LineChart>
             </ResponsiveContainer>
+            </ChartSuspense>
           )}
         </div>
       </Card>
