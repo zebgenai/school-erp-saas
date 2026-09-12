@@ -1,7 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
 import { SchoolStatus } from '@prisma/client';
-
-const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+import { isValidSchoolSlug } from '../common/tenant/school-slug';
 
 export type PublicSchoolBranding = {
   id: string;
@@ -12,7 +11,7 @@ export type PublicSchoolBranding = {
 };
 
 export function isValidPublicSchoolSlug(slug: string): boolean {
-  return SLUG_PATTERN.test(slug) && slug.length >= 2 && slug.length <= 80;
+  return isValidSchoolSlug(slug);
 }
 
 /** On a school Host, only that school's public branding may be requested. */
