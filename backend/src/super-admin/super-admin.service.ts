@@ -31,6 +31,7 @@ import {
   allocateUniqueSchoolSlug,
   schoolTenantDomain,
 } from '../common/tenant/school-slug';
+import { deleteSchoolWithDependents } from './delete-school';
 
 @Injectable()
 export class SuperAdminService {
@@ -815,9 +816,9 @@ export class SuperAdminService {
   async deleteSchool(id: string, currentUser: CurrentUser) {
     const school = await this.findSchoolOrThrow(id);
 
-    // Delete all users of the school first
-    await this.prisma.user.deleteMany({ where: { schoolId: id } });
-    await this.prisma.school.delete({ where: { id } });
+    await this.prisma.$transaction(async (tx) => {
+      await deleteSchoolWithDependents(tx, id);
+    }, { timeout: 60_000 });
 
     await this.auditLogs.log({
       action:     AuditAction.SCHOOL_DELETED,
