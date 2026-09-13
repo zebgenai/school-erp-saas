@@ -88,6 +88,10 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
 
 const statusStyles: Record<string, string> = {
   ACTIVE: "bg-success/10 text-success border-success/20",
+  TRIAL: "bg-warning/15 text-warning-foreground border-warning/30",
+  EXPIRED: "bg-destructive/10 text-destructive border-destructive/20",
+  SUSPENDED: "bg-destructive/10 text-destructive border-destructive/20",
+  CANCELLED: "bg-muted text-muted-foreground border-border",
   INACTIVE: "bg-muted text-muted-foreground border-border",
   PAID: "bg-success/10 text-success border-success/20",
   UNPAID: "bg-destructive/10 text-destructive border-destructive/20",

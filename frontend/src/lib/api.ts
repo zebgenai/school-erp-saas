@@ -1,8 +1,10 @@
 // Central API client for School ERP
 import { ApiError, formatApiError } from "./errors";
 import { markWrongHost } from "./host";
+import { tokenStore } from "./token-store";
 
 export { ApiError } from "./errors";
+export { tokenStore } from "./token-store";
 
 /**
  * API root, resolved at call time so SSR and the browser do not share a stale value.
@@ -23,20 +25,6 @@ export function getApiBaseUrl(): string {
 
 /** @deprecated Prefer getApiBaseUrl() — this snapshot can be wrong after SSR. */
 export const API_BASE_URL = getApiBaseUrl();
-
-const TOKEN_KEY = "erp_access_token";
-const REFRESH_KEY = "erp_refresh_token";
-
-export const tokenStore = {
-  get: () => (typeof window !== "undefined" ? localStorage.getItem(TOKEN_KEY) : null),
-  set: (t: string) => localStorage.setItem(TOKEN_KEY, t),
-  getRefresh: () => (typeof window !== "undefined" ? localStorage.getItem(REFRESH_KEY) : null),
-  setRefresh: (t: string) => localStorage.setItem(REFRESH_KEY, t),
-  clear: () => {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(REFRESH_KEY);
-  },
-};
 
 /** Resolve a relative upload/file path to an authenticated download URL */
 export function resolveFileUrl(path: string): string {

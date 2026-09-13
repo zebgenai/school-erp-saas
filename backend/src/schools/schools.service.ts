@@ -57,7 +57,10 @@ export class SchoolsService {
   }
 
   async findOne(id: string) {
-    const school = await this.prisma.school.findUnique({ where: { id } });
+    const school = await this.prisma.school.findUnique({
+      where: { id },
+      include: { subscription: { include: { plan: true } } },
+    });
     if (!school) throw new NotFoundException('School not found');
     return school;
   }

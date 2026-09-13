@@ -14,6 +14,7 @@ import {
 import { AppShell } from "@/components/layout/AppShell";
 import { RecentActivityWidget } from "@/components/ActivityTimeline";
 import { UpcomingEventsWidget } from "@/components/UpcomingEventsWidget";
+import { CurrentPlanCard } from "@/components/CurrentPlanCard";
 import { Card, PageHeader, StaggerItem, StaggerList, Skeleton, EmptyState, StatusBadge, ErrorState } from "@/components/ui-kit";
 import { useApiQuery, asList, asObj } from "@/lib/hooks";
 import { useAuth } from "@/lib/auth";
@@ -50,6 +51,7 @@ function Dashboard() {
   const showAttendanceCharts = can("attendance.view");
   const showExams = can("exams.view");
 
+  const school = useApiQuery<any>("/schools/mine");
   const summary = useApiQuery<any>("/reports/dashboard-summary");
   const recent = useApiQuery<any>("/reports/recent-admissions");
   const defaulters = useApiQuery<any>(showFeeView ? "/reports/fee-defaulters" : null);
@@ -119,6 +121,10 @@ function Dashboard() {
           </div>
         </div>
       </motion.div>
+
+      <div className="mb-6 max-w-md">
+        <CurrentPlanCard subscription={school.data?.subscription} loading={school.loading} />
+      </div>
 
       <StaggerList>
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">

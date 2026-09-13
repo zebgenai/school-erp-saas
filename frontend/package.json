@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test src/lib/token-store.spec.ts src/lib/school-plan-display.spec.ts",
     "format": "prettier --write .",
     "start": "node scripts/render-server.mjs"
   },

@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { Save, School, Bell, Upload } from "lucide-react";
 import { toast } from "sonner";
+import { CurrentPlanCard } from "@/components/CurrentPlanCard";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, PageHeader } from "@/components/ui-kit";
 import { Button, Field, TextInput, Textarea } from "@/components/form";
@@ -99,6 +100,7 @@ function Settings() {
         </Card>
 
         <div className="space-y-6">
+        <CurrentPlanCard subscription={(school.data as any)?.subscription} loading={school.loading} />
         <Card>
           <h3 className="font-semibold mb-4 flex items-center gap-2"><Bell className="size-4" /> Notification Channels</h3>
           <p className="text-xs text-muted-foreground mb-4">Control which outbound channels this school uses. SMTP/SMS/WhatsApp credentials are configured in Platform Settings.</p>
