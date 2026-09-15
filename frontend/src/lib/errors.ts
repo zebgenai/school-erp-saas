@@ -85,13 +85,123 @@ function humanizeOne(raw: string): string {
   return msg;
 }
 
+function backendRawMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    const fromData = error.data?.message;
+    if (Array.isArray(fromData) && fromData.length) return String(fromData[0] ?? "");
+    if (typeof fromData === "string" && fromData.trim()) return fromData;
+    return String(error.message || "");
+  }
+  if (error instanceof Error) return error.message;
+  return "";
+}
+
+export function parseLockoutMinutes(raw: string): number | null {
+  const match = String(raw || "").match(/(?:try again in|locked for)\s+(\d+)\s*minute/i);
+  if (!match) return null;
+  const minutes = Number(match[1]);
+  return Number.isFinite(minutes) && minutes > 0 ? minutes : null;
+}
+
+export function isAccountLockedMessage(raw: string): boolean {
+  return /account locked|too many failed login attempts/i.test(raw);
+}
+
+export function isInactiveAccountMessage(raw: string): boolean {
+  return /account is inactive|user account is inactive|account is suspended/i.test(raw);
+}
+
+function isSafeUserFacingMessage(raw: string): boolean {
+  const msg = raw.trim();
+  if (!msg || msg.length > 240) return false;
+  if (/\n\s*at\s+/.test(msg)) return false;
+  if (/prisma|sqlstate|jwt|bearer\s+[a-z0-9._-]+\.[a-z0-9._-]+|eyJ[A-Za-z0-9_-]{10,}/i.test(msg)) return false;
+  if (/exception|stack trace|internal server/i.test(msg) && msg.length > 80) return false;
+  return true;
+}
+
+export function formatLockedAccountMessage(raw: string): string | null {
+  if (!isAccountLockedMessage(raw)) return null;
+  const minutes = parseLockoutMinutes(raw);
+  if (minutes != null) {
+    return `\u{1F512} Account temporarily locked. Please try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`;
+  }
+  return "\u{1F512} Account temporarily locked. Please try again later.";
+}
+
+export type LoginErrorView = {
+  kind: "locked" | "inactive" | "credentials" | "generic";
+  title?: string;
+  message: string;
+};
+
+export function parseLoginError(error: unknown): LoginErrorView {
+  const status = error instanceof ApiError ? error.status : 0;
+  const raw = backendRawMessage(error);
+
+  if (status === 0) {
+    return { kind: "generic", message: "Unable to connect. Please check your internet connection." };
+  }
+  if (status === 401) {
+    return { kind: "credentials", message: "Invalid email or password." };
+  }
+  if (status === 403) {
+    if (isAccountLockedMessage(raw)) {
+      const minutes = parseLockoutMinutes(raw);
+      return {
+        kind: "locked",
+        title: "\u{1F512} Account temporarily locked",
+        message:
+          minutes != null
+            ? `Too many failed login attempts. Please try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`
+            : "Too many failed login attempts. Please try again later.",
+      };
+    }
+    if (isInactiveAccountMessage(raw)) {
+      return {
+        kind: "inactive",
+        title: "\u26A0\uFE0F Your account is inactive",
+        message: "Please contact your administrator.",
+      };
+    }
+    if (/another school's data/i.test(raw)) {
+      return {
+        kind: "generic",
+        message: "This account belongs to a different school. Sign in on your school's site.",
+      };
+    }
+    if (isSafeUserFacingMessage(raw) && !/^forbidden$/i.test(raw.trim())) {
+      return { kind: "generic", message: raw.trim() };
+    }
+    return { kind: "generic", message: "You do not have permission to perform this action." };
+  }
+  if (status >= 500) {
+    return { kind: "generic", message: "Something went wrong on our end. Please try again shortly." };
+  }
+  return { kind: "generic", message: formatApiError(error) };
+}
+
+export function formatLoginError(error: unknown): string {
+  const view = parseLoginError(error);
+  return view.title ? `${view.title}. ${view.message}` : view.message;
+}
+
 export function formatApiError(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 0) return "Unable to connect. Please check your internet connection.";
     if (error.status === 401) return "Your session has expired. Please sign in again.";
     if (error.status === 403) {
-      if (/another school's data/i.test(String(error.message))) {
+      const raw = backendRawMessage(error);
+      if (/another school's data/i.test(raw)) {
         return "This account belongs to a different school. Sign in on your school's site.";
+      }
+      const locked = formatLockedAccountMessage(raw);
+      if (locked) return locked;
+      if (isInactiveAccountMessage(raw)) {
+        return "\u26A0\uFE0F Your account is inactive. Please contact your administrator.";
+      }
+      if (isSafeUserFacingMessage(raw) && !/^forbidden$/i.test(raw.trim())) {
+        return raw.trim();
       }
       return "You do not have permission to perform this action.";
     }

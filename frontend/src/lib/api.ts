@@ -128,7 +128,16 @@ async function request<T = any>(
     throw new ApiError(e?.message || "Network error", 0);
   }
 
-  if (res.status === 401 && !opts?.retry && path !== "/auth/refresh" && path !== "/auth/login" && path !== "/auth/verify-otp" && path !== "/auth/resend-otp" && path !== "/auth/verify-login-otp" && path !== "/auth/resend-login-otp" && !path.startsWith("/public/")) {
+  const isCredentialAuth =
+    path === "/auth/login" ||
+    path === "/auth/verify-otp" ||
+    path === "/auth/resend-otp" ||
+    path === "/auth/verify-login-otp" ||
+    path === "/auth/resend-login-otp" ||
+    path === "/auth/forgot-password" ||
+    path === "/auth/reset-password";
+
+  if (res.status === 401 && !opts?.retry && path !== "/auth/refresh" && !isCredentialAuth && !path.startsWith("/public/")) {
     const newToken = await tryRefreshToken();
     if (newToken) {
       return request<T>(method, path, body, { ...opts, retry: true });
@@ -138,11 +147,9 @@ async function request<T = any>(
     throw new ApiError("Unauthorized", 401);
   }
 
-  if (res.status === 401) {
-    if (!path.startsWith("/public/")) {
-      tokenStore.clear();
-      onUnauthorized?.();
-    }
+  if (res.status === 401 && !isCredentialAuth && !path.startsWith("/public/")) {
+    tokenStore.clear();
+    onUnauthorized?.();
     throw new ApiError("Unauthorized", 401);
   }
 

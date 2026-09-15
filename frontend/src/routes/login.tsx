@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Eye, EyeOff, Mail, Lock, ArrowRight } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
+import { parseLoginError } from "@/lib/errors";
 import { consumeWrongHostFlag } from "@/lib/host";
 import { homeRouteForRole } from "@/lib/permissions";
 import { resolvePublicLogoSrc, usePublicSchoolBranding } from "@/lib/school-branding";
@@ -28,7 +29,7 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ReturnType<typeof parseLoginError> | null>(null);
   const [forgotOpen, setForgotOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotBusy, setForgotBusy] = useState(false);
@@ -97,8 +98,8 @@ function LoginPage() {
         return;
       }
       toast.success("Welcome back!");
-    } catch (err: any) {
-      setError(err?.message || "Login failed");
+    } catch (err: unknown) {
+      setError(parseLoginError(err));
     } finally {
       setLoading(false);
     }
@@ -203,9 +204,15 @@ function LoginPage() {
                       initial={{ opacity: 0, y: -6, height: 0 }}
                       animate={{ opacity: 1, y: 0, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
-                      className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2"
+                      className={
+                        error.kind === "locked"
+                          ? "text-sm bg-amber-500/10 border border-amber-500/25 text-amber-950 dark:text-amber-100 rounded-lg px-3 py-2.5"
+                          : "text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2.5"
+                      }
+                      role="alert"
                     >
-                      {error}
+                      {error.title && <p className="font-semibold">{error.title}</p>}
+                      <p className={error.title ? "mt-1" : ""}>{error.message}</p>
                     </motion.div>
                   )}
                 </AnimatePresence>
