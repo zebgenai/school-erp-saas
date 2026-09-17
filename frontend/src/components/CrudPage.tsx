@@ -47,6 +47,7 @@ export type CrudConfig<T = any> = {
   canDelete?: boolean;
   toFormValues?: (row: T) => Record<string, any>;
   preparePayload?: (form: Record<string, any>, row: T | null) => Promise<Record<string, any>> | Record<string, any>;
+  afterSave?: (saved: any, form: Record<string, any>, row: T | null) => Promise<void> | void;
 };
 
 export function CrudPage<T extends Record<string, any>>(cfg: CrudConfig<T>) {
@@ -86,13 +87,11 @@ export function CrudPage<T extends Record<string, any>>(cfg: CrudConfig<T>) {
     try {
       const body = cfg.preparePayload ? await cfg.preparePayload(form, modal.data) : form;
       const id = (modal.data as any)?.id;
-      if (id) {
-        await api.patch(`${cfg.endpoint}/${id}`, body);
-        toastSuccess(`${resource} updated successfully`);
-      } else {
-        await api.post(cfg.endpoint, body);
-        toastSuccess(`${resource} created successfully`);
-      }
+      const saved = id
+        ? await api.patch(`${cfg.endpoint}/${id}`, body)
+        : await api.post(cfg.endpoint, body);
+      if (cfg.afterSave) await cfg.afterSave(saved, form, modal.data);
+      toastSuccess(`${id ? resource + " updated" : resource + " created"} successfully`);
       setModal({ open: false, data: null });
       list.refetch();
     } catch (e: any) {
