@@ -9,6 +9,7 @@ import { Modal } from "@/components/Modal";
 import { CrudPage } from "@/components/CrudPage";
 import { useApiQuery, asList } from "@/lib/hooks";
 import { api } from "@/lib/api";
+import { bookFormFields, categorySelectOptions } from "@/lib/library-book-form";
 import { usePermissions } from "@/lib/permissions";
 
 export const Route = createFileRoute("/library")({
@@ -35,6 +36,10 @@ function Library() {
 function Books() {
   const { can } = usePermissions();
   const canManage = can("library.manage");
+  const categories = useApiQuery<any>("/library/categories");
+  const categoryOptions = categorySelectOptions(
+    asList<{ id: string; name: string }>(categories.data),
+  );
   return (
     <CrudPage
       title=""
@@ -44,25 +49,16 @@ function Books() {
       canCreate={canManage}
       canEdit={canManage}
       canDelete={canManage}
-      searchFields={["title", "author", "category", "isbn"]}
+      searchFields={["title", "author", "isbn"]}
       columns={[
         { key: "title", label: "Title" },
         { key: "author", label: "Author" },
-        { key: "category", label: "Category" },
+        { key: "category", label: "Category", render: (r: any) => r.category?.name || "—" },
         { key: "isbn", label: "ISBN", mono: true },
-        { key: "quantity", label: "Total" },
-        { key: "available", label: "Available" },
+        { key: "totalCopies", label: "Total" },
+        { key: "availableCopies", label: "Available" },
       ]}
-      fields={[
-        { key: "title", label: "Title", required: true },
-        { key: "author", label: "Author" },
-        { key: "category", label: "Category" },
-        { key: "isbn", label: "ISBN" },
-        { key: "publisher", label: "Publisher" },
-        { key: "quantity", label: "Total Quantity", type: "number" },
-        { key: "available", label: "Available", type: "number" },
-        { key: "shelf", label: "Shelf / Location" },
-      ]}
+      fields={bookFormFields(categoryOptions)}
     />
   );
 }
