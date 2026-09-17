@@ -9,7 +9,13 @@ import { Modal } from "@/components/Modal";
 import { CrudPage } from "@/components/CrudPage";
 import { useApiQuery, asList } from "@/lib/hooks";
 import { api } from "@/lib/api";
-import { bookFormFields, categorySelectOptions } from "@/lib/library-book-form";
+import {
+  bookFormFields,
+  categoryNameSuggestions,
+  prepareBookSavePayload,
+  toBookFormValues,
+  type LibraryCategory,
+} from "@/lib/library-book-form";
 import { usePermissions } from "@/lib/permissions";
 
 export const Route = createFileRoute("/library")({
@@ -37,9 +43,7 @@ function Books() {
   const { can } = usePermissions();
   const canManage = can("library.manage");
   const categories = useApiQuery<any>("/library/categories");
-  const categoryOptions = categorySelectOptions(
-    asList<{ id: string; name: string }>(categories.data),
-  );
+  const categoryList = asList<LibraryCategory>(categories.data);
   return (
     <CrudPage
       title=""
@@ -58,7 +62,16 @@ function Books() {
         { key: "totalCopies", label: "Total" },
         { key: "availableCopies", label: "Available" },
       ]}
-      fields={bookFormFields(categoryOptions)}
+      fields={bookFormFields(categoryNameSuggestions(categoryList))}
+      toFormValues={toBookFormValues}
+      preparePayload={async (form) => {
+        const payload = await prepareBookSavePayload(form, categoryList, {
+          createCategory: (name) => api.post<LibraryCategory>("/library/categories", { name }),
+          listCategories: async () => asList<LibraryCategory>(await api.get("/library/categories")),
+        });
+        categories.refetch();
+        return payload;
+      }}
     />
   );
 }

@@ -24,6 +24,8 @@ export type FieldDef = {
   full?: boolean;
   placeholder?: string;
   defaultValue?: any;
+  suggestions?: string[];
+  viewValue?: (row: any) => ReactNode;
 };
 
 export type CrudConfig<T = any> = {
@@ -43,6 +45,8 @@ export type CrudConfig<T = any> = {
   canCreate?: boolean;
   canEdit?: boolean;
   canDelete?: boolean;
+  toFormValues?: (row: T) => Record<string, any>;
+  preparePayload?: (form: Record<string, any>, row: T | null) => Promise<Record<string, any>> | Record<string, any>;
 };
 
 export function CrudPage<T extends Record<string, any>>(cfg: CrudConfig<T>) {
@@ -80,12 +84,13 @@ export function CrudPage<T extends Record<string, any>>(cfg: CrudConfig<T>) {
   const save = async (form: any) => {
     setSaving(true);
     try {
+      const body = cfg.preparePayload ? await cfg.preparePayload(form, modal.data) : form;
       const id = (modal.data as any)?.id;
       if (id) {
-        await api.patch(`${cfg.endpoint}/${id}`, form);
+        await api.patch(`${cfg.endpoint}/${id}`, body);
         toastSuccess(`${resource} updated successfully`);
       } else {
-        await api.post(cfg.endpoint, form);
+        await api.post(cfg.endpoint, body);
         toastSuccess(`${resource} created successfully`);
       }
       setModal({ open: false, data: null });
@@ -224,7 +229,7 @@ export function CrudPage<T extends Record<string, any>>(cfg: CrudConfig<T>) {
 
       {modal.open && (
         <CrudForm
-          initial={modal.data}
+          initial={modal.data ? (cfg.toFormValues ? cfg.toFormValues(modal.data) : modal.data) : null}
           fields={cfg.fields}
           title={`${modal.data ? "Edit" : "Add"} ${resource}`}
           onClose={() => setModal({ open: false, data: null })}
@@ -239,7 +244,7 @@ export function CrudPage<T extends Record<string, any>>(cfg: CrudConfig<T>) {
             {cfg.fields.map((f) => (
               <div key={f.key} className={f.full ? "sm:col-span-2" : ""}>
                 <div className="text-xs text-muted-foreground">{f.label}</div>
-                <div className="font-medium mt-0.5">{String((view as any)[f.key] ?? "—")}</div>
+                <div className="font-medium mt-0.5">{f.viewValue ? f.viewValue(view) : String((view as any)[f.key] ?? "—")}</div>
               </div>
             ))}
           </div>
@@ -297,12 +302,20 @@ function CrudForm({ initial, fields, title, onClose, onSave, saving }: any) {
                   {fd.options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </Select>
               ) : (
-                <TextInput
-                  type={fd.type === "date" ? "date" : fd.type === "number" ? "number" : fd.type === "email" ? "email" : fd.type === "tel" ? "tel" : "text"}
-                  value={fd.type === "date" ? String(f[fd.key] || "").slice(0, 10) : (f[fd.key] ?? "")}
-                  onChange={(e) => set(fd.key, e.target.value)}
-                  placeholder={fd.placeholder}
-                />
+                <>
+                  <TextInput
+                    type={fd.type === "date" ? "date" : fd.type === "number" ? "number" : fd.type === "email" ? "email" : fd.type === "tel" ? "tel" : "text"}
+                    value={fd.type === "date" ? String(f[fd.key] || "").slice(0, 10) : (f[fd.key] ?? "")}
+                    onChange={(e) => set(fd.key, e.target.value)}
+                    placeholder={fd.placeholder}
+                    list={fd.suggestions?.length ? `crud-suggest-${fd.key}` : undefined}
+                  />
+                  {fd.suggestions?.length ? (
+                    <datalist id={`crud-suggest-${fd.key}`}>
+                      {fd.suggestions.map((s) => <option key={s} value={s} />)}
+                    </datalist>
+                  ) : null}
+                </>
               )}
             </Field>
           </div>
