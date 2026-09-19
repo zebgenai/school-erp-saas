@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { otpChallengeStore } from "@/lib/otp-challenge";
 import { homeRouteForRole } from "@/lib/permissions";
+import { postAuthPath } from "@/lib/force-password";
 import { resolvePublicLogoSrc, usePublicSchoolBranding } from "@/lib/school-branding";
 import { useAppHost } from "@/lib/use-app-host";
 import { AuthBrandHeader } from "@/components/auth/AuthBrandHeader";
@@ -35,7 +36,7 @@ function VerifyOtpPage() {
   const inputs = useRef<Array<HTMLInputElement | null>>([]);
 
   useEffect(() => {
-    if (user && !success) router.navigate({ to: homeRouteForRole(user.role) });
+    if (user && !success) router.navigate({ to: postAuthPath(user, homeRouteForRole) as "/" });
   }, [user, success, router]);
 
   useEffect(() => {

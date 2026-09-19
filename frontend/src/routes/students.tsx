@@ -1,6 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useRef, useState } from "react";
-import { Plus, Search, Edit2, Trash2, Users, Eye, Upload, FileText, X, Download, Printer, Image as ImageIcon } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, Users, Eye, Upload, FileText, X, Download, Printer, Image as ImageIcon, CreditCard } from "lucide-react";
 import { toast } from "sonner";
 import { toastSuccess, toastError } from "@/lib/errors";
 import { AppShell } from "@/components/layout/AppShell";
@@ -268,6 +268,7 @@ function Students() {
               <h3 className="text-sm font-semibold mb-2 flex items-center gap-2"><FileText className="w-4 h-4" /> Documents</h3>
               <StudentDocuments studentId={view.id} />
             </div>
+            <StudentIdCardPanel student={view} canManage={canEdit} />
             <div>
               <h3 className="text-sm font-semibold mb-3">Activity Timeline</h3>
               <ActivityTimeline entity="Student" entityId={view.id} />
@@ -528,6 +529,49 @@ export function StudentDocuments({ studentId }: { studentId: string }) {
       <ConfirmDialog open={!!delDoc} onClose={() => setDelDoc(null)} onConfirm={deleteDoc}
         title="Delete document?" message={`Remove "${delDoc?.fileName}"? This cannot be undone.`}
         loading={deleting} />
+    </div>
+  );
+}
+
+function StudentIdCardPanel({ student, canManage }: { student: any; canManage: boolean }) {
+  const card = useApiQuery<any>(student?.id ? `/id-cards/student/${student.id}` : null);
+  const [busy, setBusy] = useState("");
+  const act = async (kind: "issue" | "reissue" | "revoke") => {
+    setBusy(kind);
+    try {
+      if (kind === "revoke") await api.post(`/id-cards/student/${student.id}/revoke`);
+      else if (kind === "reissue") await api.post(`/id-cards/student/${student.id}/reissue`);
+      else await api.post(`/id-cards/student/${student.id}`);
+      toastSuccess(kind === "revoke" ? "ID card revoked" : kind === "reissue" ? "ID card reissued" : "ID card generated");
+      card.refetch();
+    } catch (e: any) {
+      toastError(e);
+    } finally {
+      setBusy("");
+    }
+  };
+  const hasCard = Boolean(card.data?.card);
+  return (
+    <div>
+      <h3 className="text-sm font-semibold mb-2 flex items-center gap-2"><CreditCard className="w-4 h-4" /> ID Card</h3>
+      <p className="text-xs text-muted-foreground mb-3">
+        {hasCard ? `Active card issued ${card.data.card.issuedAt ? new Date(card.data.card.issuedAt).toLocaleDateString() : ""}` : "No active ID card."}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Link to="/id-cards" className="inline-flex"><Button size="sm" variant="outline">View card</Button></Link>
+        {hasCard && (
+          <Button size="sm" variant="outline" onClick={() => pdfApi.idCards({ studentIds: [student.id] }).catch((e) => toastError(e))}>
+            Reprint
+          </Button>
+        )}
+        {canManage && !hasCard && <Button size="sm" onClick={() => act("issue")} loading={busy === "issue"}>Generate</Button>}
+        {canManage && hasCard && (
+          <>
+            <Button size="sm" variant="outline" onClick={() => act("reissue")} loading={busy === "reissue"}>Reissue</Button>
+            <Button size="sm" variant="destructive" onClick={() => act("revoke")} loading={busy === "revoke"}>Revoke</Button>
+          </>
+        )}
+      </div>
     </div>
   );
 }

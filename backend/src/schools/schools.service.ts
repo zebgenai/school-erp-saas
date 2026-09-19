@@ -9,6 +9,7 @@ import { resolveUploadDiskPath } from '../common/utils/upload-path';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSchoolDto } from './dto-create-school';
 import { UpdateSchoolDto } from './dto-update-school';
+import { resolveSchoolTimeZone } from '../common/utils/school-time';
 import { toPublicSchoolBranding } from './public-school-branding';
 
 @Injectable()
@@ -130,6 +131,16 @@ export class SchoolsService {
           : {}),
         ...(dto.whatsappNotificationsEnabled !== undefined
           ? { whatsappNotificationsEnabled: dto.whatsappNotificationsEnabled }
+          : {}),
+        ...(dto.idCardTemplate !== undefined ? { idCardTemplate: dto.idCardTemplate } : {}),
+        ...(dto.timezone !== undefined
+          ? { timezone: resolveSchoolTimeZone(dto.timezone) }
+          : {}),
+        ...(dto.attendancePresentUntil !== undefined
+          ? { attendancePresentUntil: dto.attendancePresentUntil || null }
+          : {}),
+        ...(dto.attendanceLateUntil !== undefined
+          ? { attendanceLateUntil: dto.attendanceLateUntil || null }
           : {}),
       },
     });

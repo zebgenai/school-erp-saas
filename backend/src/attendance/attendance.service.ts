@@ -13,7 +13,15 @@ import { NotificationEngineService } from '../notifications/notification-engine.
 import { AttendanceQueryDto } from './dto/attendance-query.dto';
 import { BulkAttendanceDto } from './dto/bulk-attendance.dto';
 import { MarkAttendanceDto } from './dto/mark-attendance.dto';
+import { QrScanDto } from './dto/qr-scan.dto';
 import { UpdateAttendanceDto } from './dto/update-attendance.dto';
+import { resolveQrAttendanceStatus } from './qr-status';
+import { normalizeScannedQr } from '../id-cards/qr-token';
+import {
+  DEFAULT_SCHOOL_TIMEZONE,
+  localDateString,
+  resolveSchoolTimeZone,
+} from '../common/utils/school-time';
 
 const attendanceInclude = {
   student: true,
@@ -22,8 +30,13 @@ const attendanceInclude = {
   markedBy: { select: { id: true, name: true, email: true, role: true } },
 } satisfies Prisma.StudentAttendanceInclude;
 
+export const QR_SCAN_REMARKS = 'QR_SCAN';
+const QR_SCAN_DEBOUNCE_MS = 3000;
+
 @Injectable()
 export class AttendanceService {
+  private readonly recentQrScans = new Map<string, number>();
+
   constructor(
     private prisma: PrismaService,
     private readonly notificationEngine: NotificationEngineService,
@@ -149,6 +162,100 @@ export class AttendanceService {
     );
 
     return { createdCount, updatedCount };
+  }
+
+  async markFromQrScan(dto: QrScanDto, currentUser: CurrentUser, now: Date = new Date()) {
+    // Product decision: QR scanner is school-staff only. SUPER_ADMIN has no school
+    // context on the scanner UI and must not scan with an ambiguous/token-derived school.
+    if (currentUser.role === UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException(
+        'QR attendance scanning is limited to school staff with school context',
+      );
+    }
+    const schoolId = this.resolveSchoolId(currentUser);
+    const token = normalizeScannedQr(dto.token);
+    if (!token) {
+      return this.qrResult('INVALID', 'Invalid or inactive QR code.');
+    }
+
+    const card = await this.prisma.studentIdCard.findUnique({
+      where: { qrToken: token },
+      include: { student: true },
+    });
+
+    if (!card || card.schoolId !== schoolId) {
+      return this.qrResult('INVALID', 'Invalid or inactive QR code.');
+    }
+    if (!card.isActive || card.revokedAt) {
+      return this.qrResult('REVOKED', 'This ID card has been revoked.');
+    }
+    if (card.student.schoolId !== schoolId) {
+      return this.qrResult('INVALID', 'Invalid or inactive QR code.');
+    }
+    if (card.student.status !== 'ACTIVE') {
+      return this.qrResult('INACTIVE_STUDENT', 'Invalid or inactive QR code.');
+    }
+
+    const student = card.student;
+    const school = await this.prisma.school.findUnique({ where: { id: schoolId } });
+    const timeZone = resolveSchoolTimeZone(school?.timezone ?? DEFAULT_SCHOOL_TIMEZONE);
+    const date = this.normalizeDate(localDateString(now, timeZone));
+    const debounceKey = `${schoolId}:${student.id}`;
+    if (this.isQrDebounced(debounceKey)) {
+      const existing = await this.prisma.studentAttendance.findUnique({
+        where: { schoolId_studentId_date: { schoolId, studentId: student.id, date } },
+      });
+      return this.qrAlreadyMarked(student.fullName, existing?.status ?? AttendanceStatus.PRESENT, true);
+    }
+
+    const existing = await this.prisma.studentAttendance.findUnique({
+      where: { schoolId_studentId_date: { schoolId, studentId: student.id, date } },
+    });
+
+    if (existing) {
+      return this.qrAlreadyMarked(student.fullName, existing.status, false);
+    }
+
+    const status = resolveQrAttendanceStatus({
+      now,
+      timeZone,
+      presentUntil: school?.attendancePresentUntil,
+      lateUntil: school?.attendanceLateUntil,
+    });
+
+    try {
+      const record = await this.prisma.studentAttendance.create({
+        data: {
+          schoolId,
+          studentId: student.id,
+          date,
+          status,
+          remarks: QR_SCAN_REMARKS,
+          classId: student.classId,
+          sectionId: student.sectionId,
+          markedById: currentUser.id,
+        },
+        include: attendanceInclude,
+      });
+      this.touchQrDebounce(debounceKey);
+      const verb = status === AttendanceStatus.LATE ? 'marked Late' : 'marked Present';
+      return {
+        result: 'SUCCESS' as const,
+        message: `${student.fullName} ${verb}`,
+        status: record.status,
+        duplicate: false,
+        student: { id: student.id, fullName: student.fullName, admissionNo: student.admissionNo },
+        attendanceId: record.id,
+      };
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const raced = await this.prisma.studentAttendance.findUnique({
+          where: { schoolId_studentId_date: { schoolId, studentId: student.id, date } },
+        });
+        return this.qrAlreadyMarked(student.fullName, raced?.status ?? AttendanceStatus.PRESENT, false);
+      }
+      throw error;
+    }
   }
 
   async findAll(currentUser: CurrentUser, query: AttendanceQueryDto) {
@@ -437,6 +544,51 @@ export class AttendanceService {
 
     if (currentUser.schoolId !== resourceSchoolId) {
       throw new ForbiddenException('Cannot access another school\'s data');
+    }
+  }
+
+  private qrResult(result: 'INVALID' | 'REVOKED' | 'INACTIVE_STUDENT', message: string) {
+    return { result, message, duplicate: false };
+  }
+
+  private qrAlreadyMarked(fullName: string, status: AttendanceStatus, debounced: boolean) {
+    const label =
+      status === AttendanceStatus.PRESENT
+        ? 'Present'
+        : status === AttendanceStatus.LATE
+          ? 'Late'
+          : status === AttendanceStatus.ABSENT
+            ? 'Absent'
+            : 'Leave';
+    return {
+      result: 'DUPLICATE' as const,
+      message: `${fullName} is already marked ${label} today.`,
+      status,
+      duplicate: true,
+      debounced,
+      student: { fullName },
+    };
+  }
+
+  /**
+   * Debounce is an in-process UX optimization only (~3s).
+   * Correctness for duplicate attendance is the DB unique (schoolId, studentId, date).
+   * Multiple app instances remain safe via that constraint; this map is not shared.
+   * Legitimate first scans are never suppressed; only rapid same-key repeats within the window.
+   */
+  private isQrDebounced(key: string): boolean {
+    const prev = this.recentQrScans.get(key);
+    if (prev && Date.now() - prev < QR_SCAN_DEBOUNCE_MS) return true;
+    return false;
+  }
+
+  private touchQrDebounce(key: string) {
+    const now = Date.now();
+    this.recentQrScans.set(key, now);
+    if (this.recentQrScans.size > 2000) {
+      for (const [entryKey, at] of this.recentQrScans) {
+        if (now - at > QR_SCAN_DEBOUNCE_MS) this.recentQrScans.delete(entryKey);
+      }
     }
   }
 }

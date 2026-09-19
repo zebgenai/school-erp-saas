@@ -10,6 +10,18 @@ import { CrudPage } from "@/components/CrudPage";
 import { useApiQuery, asList } from "@/lib/hooks";
 import { api } from "@/lib/api";
 import { usePermissions } from "@/lib/permissions";
+import {
+  buildVehiclePayload,
+  toVehicleFormValues,
+  vehicleFormFields,
+} from "@/lib/transport-vehicle-form";
+import {
+  buildRoutePayload,
+  displayRouteVehicleNo,
+  routeFormFields,
+  toRouteFormValues,
+  type TransportVehicleOption,
+} from "@/lib/transport-route-form";
 
 export const Route = createFileRoute("/transport")({
   head: () => ({ meta: [{ title: "Transport — School ERP" }] }),
@@ -29,48 +41,68 @@ function Transport() {
             className={`px-4 py-2 rounded-lg text-sm font-medium capitalize transition ${tab === t ? "bg-card shadow-soft" : "text-muted-foreground hover:text-foreground"}`}>{t}</button>
         ))}
       </div>
-      {tab === "vehicles" && (
-        <CrudPage title="" endpoint="/transport/vehicles" resourceName="vehicle" emptyIcon={Bus}
-          canCreate={canManage} canEdit={canManage} canDelete={canManage}
-          searchFields={["registrationNo", "model"]}
-          columns={[
-            { key: "registrationNo", label: "Reg No", mono: true },
-            { key: "model", label: "Model" },
-            { key: "capacity", label: "Capacity" },
-            { key: "driverName", label: "Driver" },
-            { key: "status", label: "Status", badge: true },
-          ]}
-          fields={[
-            { key: "registrationNo", label: "Registration No", required: true },
-            { key: "model", label: "Model" },
-            { key: "capacity", label: "Capacity", type: "number" },
-            { key: "driverName", label: "Driver Name" },
-            { key: "status", label: "Status", type: "select", defaultValue: "ACTIVE",
-              options: [{ label: "Active", value: "ACTIVE" }, { label: "Inactive", value: "INACTIVE" }] },
-          ]} />
-      )}
-      {tab === "routes" && (
-        <CrudPage title="" endpoint="/transport/routes" resourceName="route" emptyIcon={Bus}
-          canCreate={canManage} canEdit={canManage} canDelete={canManage}
-          searchFields={["name", "from", "to"]}
-          columns={[
-            { key: "name", label: "Route Name" },
-            { key: "from", label: "From" },
-            { key: "to", label: "To" },
-            { key: "fare", label: "Fare" },
-            { key: "vehicleNo", label: "Vehicle" },
-          ]}
-          fields={[
-            { key: "name", label: "Route Name", required: true },
-            { key: "from", label: "From" },
-            { key: "to", label: "To" },
-            { key: "fare", label: "Monthly Fare", type: "number" },
-            { key: "vehicleNo", label: "Assigned Vehicle" },
-            { key: "stops", label: "Stops", type: "textarea", full: true },
-          ]} />
-      )}
+      {tab === "vehicles" && <VehiclesTab canManage={canManage} />}
+      {tab === "routes" && <RoutesTab canManage={canManage} />}
       {tab === "assignments" && <AssignmentsTab />}
     </div>
+  );
+}
+
+function VehiclesTab({ canManage }: { canManage: boolean }) {
+  return (
+    <CrudPage
+      title=""
+      endpoint="/transport/vehicles"
+      resourceName="vehicle"
+      emptyIcon={Bus}
+      canCreate={canManage}
+      canEdit={canManage}
+      canDelete={canManage}
+      searchFields={["vehicleNo", "model", "driverName"]}
+      columns={[
+        { key: "vehicleNo", label: "Reg No", mono: true },
+        { key: "model", label: "Model" },
+        { key: "type", label: "Type" },
+        { key: "capacity", label: "Capacity" },
+        { key: "driverName", label: "Driver" },
+        { key: "status", label: "Status", badge: true },
+      ]}
+      fields={vehicleFormFields()}
+      toFormValues={toVehicleFormValues}
+      preparePayload={(form) => buildVehiclePayload(form)}
+    />
+  );
+}
+
+function RoutesTab({ canManage }: { canManage: boolean }) {
+  const vehicles = useApiQuery<any>("/transport/vehicles");
+  const vehicleList = asList<TransportVehicleOption>(vehicles.data);
+
+  return (
+    <CrudPage
+      title=""
+      endpoint="/transport/routes"
+      resourceName="route"
+      emptyIcon={Bus}
+      canCreate={canManage}
+      canEdit={canManage}
+      canDelete={canManage}
+      searchFields={["name", "startPoint", "endPoint"]}
+      columns={[
+        { key: "name", label: "Route Name" },
+        { key: "startPoint", label: "From" },
+        { key: "endPoint", label: "To" },
+        { key: "fare", label: "Fare" },
+        {
+          key: "vehicleNo",
+          label: "Vehicle",
+          render: (r: any) => displayRouteVehicleNo(r),
+        },
+      ]}
+      fields={routeFormFields(vehicleList)}
+      toFormValues={toRouteFormValues}
+      preparePayload={(form) => buildRoutePayload(form)}
+    />
   );
 }
 

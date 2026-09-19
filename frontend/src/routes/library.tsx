@@ -16,6 +16,10 @@ import {
   toBookFormValues,
   type LibraryCategory,
 } from "@/lib/library-book-form";
+import {
+  buildIssueBookPayload,
+  todayIsoDate,
+} from "@/lib/library-issue-form";
 import { usePermissions } from "@/lib/permissions";
 
 export const Route = createFileRoute("/library")({
@@ -124,8 +128,8 @@ function Issues() {
                 {rows.map((r) => (
                   <tr key={r.id} className="border-t hover:bg-muted/30">
                     <td className="px-4 py-3 font-medium">{r.book?.title || r.bookTitle}</td>
-                    <td className="px-4 py-3">{r.student?.fullName || r.studentName}</td>
-                    <td className="px-4 py-3">{r.issueDate}</td>
+                    <td className="px-4 py-3">{r.student?.fullName || r.issuedToName || r.studentName}</td>
+                    <td className="px-4 py-3">{r.issueDate ? String(r.issueDate).slice(0, 10) : "—"}</td>
                     <td className="px-4 py-3">{r.dueDate}</td>
                     <td className="px-4 py-3">{r.fine || 0}</td>
                     <td className="px-4 py-3"><StatusBadge status={r.status || "ISSUED"} /></td>
@@ -147,13 +151,21 @@ function Issues() {
 }
 
 function IssueForm({ books, students, onSubmit, busy }: any) {
-  const [f, setF] = useState({ bookId: "", studentId: "", issueDate: new Date().toISOString().slice(0, 10), dueDate: "" });
+  const [f, setF] = useState({
+    bookId: "",
+    studentId: "",
+    issueDate: todayIsoDate(),
+    dueDate: "",
+  });
   const submit = () => {
-    if (!f.bookId) return toast.error("Select a book");
-    if (!f.studentId) return toast.error("Select a student");
-    if (!f.dueDate) return toast.error("Due date is required");
-    if (f.dueDate < f.issueDate) return toast.error("Due date cannot be before issue date");
-    onSubmit(f);
+    try {
+      if (f.dueDate && f.dueDate < f.issueDate) {
+        return toast.error("Due date cannot be before issue date");
+      }
+      onSubmit(buildIssueBookPayload(f, students));
+    } catch (e: any) {
+      toast.error(e.message || "Invalid issue details");
+    }
   };
   return (
     <div className="space-y-3">
@@ -169,7 +181,9 @@ function IssueForm({ books, students, onSubmit, busy }: any) {
           {students.map((s: any) => <option key={s.id} value={s.id}>{s.fullName}</option>)}
         </Select>
       </Field>
-      <Field label="Issue Date"><TextInput type="date" value={f.issueDate} onChange={(e) => setF({ ...f, issueDate: e.target.value })} /></Field>
+      <Field label="Issue Date">
+        <TextInput type="date" value={f.issueDate} readOnly disabled />
+      </Field>
       <Field label="Due Date"><TextInput type="date" value={f.dueDate} onChange={(e) => setF({ ...f, dueDate: e.target.value })} /></Field>
       <div className="pt-2"><Button loading={busy} onClick={submit}>Issue</Button></div>
     </div>

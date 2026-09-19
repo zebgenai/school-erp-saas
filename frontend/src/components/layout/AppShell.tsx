@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, GraduationCap, CalendarCheck, Receipt,
   ClipboardList, BarChart3, Settings, LogOut, Menu, X, ChevronLeft, School,
   UserCog, Briefcase, Wallet, BookOpen, Calendar, Bus, Megaphone, Building2, HeartHandshake,
-  DollarSign, Activity, ShieldCheck, Globe, KeyRound, CalendarDays,
+  DollarSign, Activity, ShieldCheck, Globe, KeyRound, CalendarDays, CreditCard,
 } from "lucide-react";
 import { resolveFileUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -13,6 +13,7 @@ import { schoolLoginOrigin } from "@/lib/host";
 import { useAppHost } from "@/lib/use-app-host";
 import { applySchoolTheme } from "@/lib/school-branding";
 import { usePermissions, homeRouteForRole, isPlatformStaff, roleDisplayName, type Permission } from "@/lib/permissions";
+import { FORCE_CHANGE_PASSWORD_PATH, shouldRedirectForcedUser } from "@/lib/force-password";
 import { otpChallengeStore } from "@/lib/otp-challenge";
 import { cn } from "@/lib/utils";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -44,6 +45,7 @@ const teacherNavGroups: NavGroup[] = [
   ]},
   { label: "Classes", items: [
     { to: "/students",   label: "Students",    icon: Users,        permission: "students.view" },
+    { to: "/id-cards",   label: "ID Cards",    icon: CreditCard,   permission: "students.view" },
     { to: "/classes",    label: "Classes",     icon: GraduationCap, permission: "classes.view" },
     { to: "/timetable",  label: "Timetable",   icon: Calendar,     permission: "timetable.view" },
     { to: "/academic-calendar", label: "Academic Calendar", icon: CalendarDays, permission: "academic-calendar.view" },
@@ -82,6 +84,7 @@ const schoolNavGroups: NavGroup[] = [
   ]},
   { label: "People", items: [
     { to: "/students",  label: "Students", icon: Users,        permission: "students.view" },
+    { to: "/id-cards",  label: "ID Cards", icon: CreditCard,   permission: "students.view" },
     { to: "/parents",   label: "Parents",  icon: HeartHandshake, permission: "parents.view" },
     { to: "/teachers",  label: "Teachers", icon: UserCog,      permission: "teachers.view" },
     { to: "/staff",     label: "Staff",    icon: Briefcase,    permission: "staff.view" },
@@ -137,8 +140,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [loading, user, router]);
 
   useEffect(() => {
-    if (!loading && user && !canRoute(pathname)) {
-      router.navigate({ to: homeRouteForRole(user.role) });
+    if (loading || !user) return;
+    const forcedTo = shouldRedirectForcedUser(user, pathname);
+    if (forcedTo) {
+      router.navigate({ to: forcedTo as "/" });
+      return;
+    }
+    if (!canRoute(pathname) && pathname !== FORCE_CHANGE_PASSWORD_PATH) {
+      router.navigate({ to: homeRouteForRole(user.role) as "/" });
     }
   }, [loading, user, pathname, router, canRoute]);
 

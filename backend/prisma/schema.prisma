@@ -44,6 +44,13 @@ enum AttendanceStatus {
   LATE
 }
 
+enum IdCardTemplate {
+  CLASSIC
+  MODERN
+  PREMIUM
+  MINIMAL
+}
+
 enum ExamStatus {
   DRAFT
   ACTIVE
@@ -129,6 +136,12 @@ model School {
   logoUrl    String?
   themeColor String?
 
+  idCardTemplate         IdCardTemplate @default(CLASSIC)
+  /// IANA timezone for school-local attendance dates/cutoffs (default Pakistan).
+  timezone               String         @default("Asia/Karachi")
+  attendancePresentUntil String?
+  attendanceLateUntil    String?
+
   emailNotificationsEnabled    Boolean @default(true)
   smsNotificationsEnabled      Boolean @default(false)
   whatsappNotificationsEnabled Boolean @default(false)
@@ -174,6 +187,7 @@ model School {
   calendarEvents    AcademicCalendarEvent[]
   subscription      SchoolSubscription?
   saasInvoices      SaasInvoice[]
+  idCards           StudentIdCard[]
 
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -465,6 +479,7 @@ model Student {
   documents      StudentDocument[]
   homeworkSubmissions HomeworkSubmission[]
   onlineClassAttendances OnlineClassAttendance[]
+  idCards        StudentIdCard[]
 
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -585,6 +600,29 @@ model StudentAttendance {
   @@index([date])
   @@index([schoolId, date])
   @@index([schoolId, classId, date])
+}
+
+model StudentIdCard {
+  id         String    @id @default(uuid())
+  schoolId   String
+  school     School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId  String
+  student    Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  qrToken    String    @unique
+  isActive   Boolean   @default(true)
+  issuedAt   DateTime  @default(now())
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([schoolId])
+  @@index([studentId])
+  @@index([schoolId, studentId])
+  @@index([schoolId, isActive])
+  // Partial unique: at most one active card per student is enforced in SQL
+  // (StudentIdCard_one_active_per_student_idx: UNIQUE(studentId) WHERE isActive = true).
+  // Prisma schema cannot express partial unique indexes; see migration
+  // 20260918120000_id_card_active_unique_timezone.
 }
 
 model FeeStructure {

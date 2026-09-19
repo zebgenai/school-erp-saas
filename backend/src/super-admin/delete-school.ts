@@ -18,6 +18,7 @@ export const SCHOOL_SCOPED_DELETE_MANY_MODELS = [
   'examSubject',
   'exam',
   'studentAttendance',
+  'studentIdCard',
   'feePayment',
   'feeInvoice',
   'feeStructure',

@@ -27,6 +27,7 @@ import {
   PermKey,
 } from '../roles/roles.constants';
 import { assertStrongPassword } from '../common/validators/password.validator';
+import { AuthService } from '../auth/auth.service';
 import {
   allocateUniqueSchoolSlug,
   schoolTenantDomain,
@@ -40,6 +41,7 @@ export class SuperAdminService {
     private jwtService: JwtService,
     private auditLogs: AuditLogsService,
     private readonly notificationEngine: NotificationEngineService,
+    private readonly authService: AuthService,
   ) {}
 
   // ─── Dashboard ───────────────────────────────────────────────────────────────
@@ -459,6 +461,8 @@ export class SuperAdminService {
           password: hashed,
           role:     UserRole.SCHOOL_ADMIN,
           status:   UserStatus.ACTIVE,
+          // Admin-assigned initial password must be changed on first login.
+          forcePasswordChange: true,
         },
       });
 
@@ -636,9 +640,9 @@ export class SuperAdminService {
     const user = await this.findUserOrThrow(userId);
     if (isPlatformRole(user.role) && !user.schoolId) {
       this.assertPlatformOwner(currentUser);
-      assertStrongPassword(newPassword);
     }
-    const hashed = await bcrypt.hash(newPassword, 10);
+    assertStrongPassword(newPassword);
+    const hashed = await bcrypt.hash(newPassword, 12);
 
     await this.prisma.user.update({
       where: { id: userId },
@@ -649,6 +653,8 @@ export class SuperAdminService {
         lockedUntil:   null,
       },
     });
+
+    await this.authService.revokeUserSessions(userId);
 
     await this.auditLogs.log({
       action:    AuditAction.PASSWORD_RESET,

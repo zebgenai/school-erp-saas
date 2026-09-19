@@ -10,6 +10,10 @@ import { ExamsService } from '../exams/exams.service';
 import { FeesService } from '../fees/fees.service';
 import { PayrollService } from '../payroll/payroll.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { IdCardView } from '../id-cards/card-payload';
+import { IdCardsService } from '../id-cards/id-cards.service';
+import { qrTokenToPng } from '../id-cards/qr-render';
+import { resolveUploadDiskPath } from '../common/utils/upload-path';
 import { DashboardQueryDto } from '../reports/dto/dashboard-query.dto';
 import { ReportsService } from '../reports/reports.service';
 import { StudentsService } from '../students/students.service';
@@ -28,7 +32,9 @@ import {
   renderStudentProfile,
 } from './templates/student.template';
 import { renderClassTimetable } from './templates/timetable.template';
+import { renderIdCardSheet } from './templates/id-card.template';
 import { ZipEntry, createZipBuffer } from './zip-base';
+import { IdCardsPdfDto } from './dto/id-cards-pdf.dto';
 
 export interface PdfOutput {
   buffer: Buffer;
@@ -51,6 +57,7 @@ export class PdfService {
     private readonly examsService: ExamsService,
     private readonly payrollService: PayrollService,
     private readonly reportsService: ReportsService,
+    private readonly idCardsService: IdCardsService,
   ) {}
 
   async generateFeeInvoice(invoiceId: string, user: CurrentUser): Promise<PdfOutput> {
@@ -354,6 +361,64 @@ export class PdfService {
 
     const slug = `${classRecord.name}${sectionName ? `-${sectionName}` : ''}`.replace(/\s+/g, '-');
     return { buffer, filename: `timetable-${slug}.pdf` };
+  }
+
+  async generateIdCards(dto: IdCardsPdfDto, user: CurrentUser): Promise<PdfOutput> {
+    // Preview is read-only: PDF can render layouts (and existing QR) without minting cards.
+    // Walk preview batches server-side so allActive schools never require the browser
+    // to upload thousands of student IDs (MAX_ID_CARDS_BATCH per page).
+    const MAX_PDF_BATCHES = 100;
+    const cards: Array<IdCardView & { qrPng?: Buffer; photoPath?: string | null }> = [];
+
+    let cursor = dto.cursor;
+    let batches = 0;
+    let hasMore = true;
+
+    while (hasMore && batches < MAX_PDF_BATCHES) {
+      batches += 1;
+      const preview = await this.idCardsService.preview(
+        {
+          classId: dto.classId,
+          sectionId: dto.sectionId,
+          studentIds: dto.studentIds,
+          allActive: dto.allActive,
+          cursor,
+          template: dto.template,
+          schoolId: dto.schoolId,
+        },
+        user,
+      );
+
+      if (preview.cards.length === 0) {
+        break;
+      }
+
+      const batch = await Promise.all(
+        preview.cards.map(async (card) => ({
+          ...card,
+          qrPng: card.qrToken ? await qrTokenToPng(card.qrToken) : undefined,
+          photoPath: resolveUploadDiskPath(card.student.photoUrl),
+        })),
+      );
+      cards.push(...batch);
+
+      // Explicit studentIds are a closed set (one preview page). Otherwise follow cursor.
+      if (dto.studentIds?.length || !preview.hasMore || !preview.nextCursor) {
+        hasMore = false;
+      } else {
+        cursor = preview.nextCursor;
+      }
+    }
+
+    if (cards.length === 0) {
+      throw new BadRequestException('No students matched the ID card selection');
+    }
+
+    const buffer = await createPdfBuffer(
+      (doc) => renderIdCardSheet(doc, cards),
+      { size: 'A4', margin: 24, bufferPages: true, layout: 'portrait' },
+    );
+    return { buffer, filename: `id-cards-${cards.length}.pdf` };
   }
 
   private async getSchoolInfo(schoolId: string): Promise<SchoolPdfInfo> {

@@ -165,8 +165,12 @@ function waitForImages(doc: Document): Promise<void> {
   ).then(() => undefined);
 }
 
-export async function printPdf(path: string, params?: Record<string, any>) {
-  const blob = await fetchPdfBlob(path, params);
+export async function printPdf(
+  path: string,
+  params?: Record<string, any>,
+  req?: { method?: "GET" | "POST"; body?: unknown },
+) {
+  const blob = asPdfBlob((await fetchBinary(path, { params, method: req?.method, body: req?.body })).blob);
   const bytes = await blob.arrayBuffer();
 
   let images: string[];
@@ -251,4 +255,10 @@ export const pdfApi = {
   feeDefaulters: (params?: Record<string, any>) =>
     downloadPdf("/pdf/fee-defaulters", "fee-defaulters.pdf", params),
   printFeeDefaulters: (params?: Record<string, any>) => printPdf("/pdf/fee-defaulters", params),
+  idCards: (body: Record<string, unknown>) =>
+    fetchBinary("/pdf/id-cards", { method: "POST", body }).then(({ blob, filename }) => {
+      saveBlob(asPdfBlob(blob), filename ?? "id-cards.pdf");
+    }),
+  printIdCards: (body: Record<string, unknown>) =>
+    printPdf("/pdf/id-cards", undefined, { method: "POST", body }),
 };

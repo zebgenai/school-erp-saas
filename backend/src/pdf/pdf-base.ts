@@ -17,9 +17,12 @@ export function fmtDate(d?: Date | string | null) {
   return dt.toLocaleDateString('en-PK', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-export function createPdfBuffer(build: (doc: PDFKit.PDFDocument) => void): Promise<Buffer> {
+export function createPdfBuffer(
+  build: (doc: PDFKit.PDFDocument) => void,
+  options?: PDFKit.PDFDocumentOptions,
+): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margin: 48, bufferPages: true });
+    const doc = new PDFDocument({ size: 'A4', margin: 48, bufferPages: true, ...options });
     const chunks: Buffer[] = [];
     doc.on('data', (chunk) => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));

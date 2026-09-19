@@ -1,6 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { CalendarCheck, Save, UserCheck, UserX, Clock, Plane } from "lucide-react";
+import { CalendarCheck, Save, UserCheck, UserX, Clock, Plane, QrCode } from "lucide-react";
 import { toast } from "sonner";
 import { toastSuccess, toastError } from "@/lib/errors";
 import { AppShell } from "@/components/layout/AppShell";
@@ -82,7 +82,15 @@ function AttendancePage() {
 
   return (
     <div>
-      <PageHeader title="Attendance" description="Mark daily attendance for each class and section." />
+      <PageHeader
+        title="Attendance"
+        description="Mark daily attendance for each class and section."
+        actions={canMark ? (
+          <Link to="/id-cards">
+            <Button variant="outline"><QrCode className="size-4" /> QR scanner</Button>
+          </Link>
+        ) : undefined}
+      />
 
       <Card className="mb-4">
         <div className="grid sm:grid-cols-4 gap-3">

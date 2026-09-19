@@ -9,6 +9,7 @@ import { Modal, ConfirmDialog } from "@/components/Modal";
 import { useApiQuery, asList } from "@/lib/hooks";
 import { api } from "@/lib/api";
 import { usePermissions } from "@/lib/permissions";
+import { buildSectionPayload } from "@/lib/section-form";
 
 export const Route = createFileRoute("/classes")({
   head: () => ({ meta: [{ title: "Classes — School ERP" }] }),
@@ -148,11 +149,14 @@ function CrudTable({
     }
 
     if (endpoint === "/sections") {
-      return {
-        name: form.name?.trim(),
-        classId: form.classId || undefined,
-        teacherId: relation(form.teacherId),
-      };
+      return buildSectionPayload(
+        {
+          name: form.name?.trim(),
+          classId: form.classId,
+          teacherId: relation(form.teacherId),
+        },
+        !!modal.data?.id,
+      );
     }
 
     if (endpoint === "/subjects") {
@@ -175,7 +179,7 @@ function CrudTable({
       return toast.error("Name is required");
     }
 
-    if (endpoint === "/sections" && !form.classId) {
+    if (endpoint === "/sections" && !modal.data?.id && !form.classId) {
       return toast.error("Class is required");
     }
 
@@ -344,6 +348,7 @@ function CrudTable({
               {f.type === "class" ? (
                 <Select
                   value={form[f.name] ?? ""}
+                  disabled={endpoint === "/sections" && !!modal.data?.id}
                   onChange={(e) =>
                     // Changing the class invalidates any section chosen under the old one.
                     setForm({ ...form, [f.name]: e.target.value, sectionId: "" })

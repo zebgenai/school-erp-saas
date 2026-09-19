@@ -11,6 +11,7 @@ import { Button, Field, Select, TextInput } from "@/components/form";
 import { Modal, ConfirmDialog } from "@/components/Modal";
 import { useApiQuery, asList } from "@/lib/hooks";
 import { api } from "@/lib/api";
+import { PASSWORD_POLICY_MESSAGE, isStrongPassword } from "@/lib/force-password";
 import { usePermissions } from "@/lib/permissions";
 import { useAuth } from "@/lib/auth";
 
@@ -145,7 +146,6 @@ function UserManagement() {
                           onView={() => setViewModal(u)}
                           onEdit={() => setEditModal(u)}
                           onResetPw={() => setResetPwModal(u)}
-                          onChangePw={() => setResetPwModal(u)}
                           onForcePwChange={async () => {
                             try {
                               await api.patch(`/users/${u.id}`, { forcePasswordChange: true });
@@ -221,7 +221,7 @@ function UserManagement() {
   );
 }
 
-function UserActionMenu({ user, onView, onEdit, onResetPw, onChangePw, onForcePwChange, onChangeRole, onActivate, onDeactivate, onUnlock, onLock, onDelete }: any) {
+function UserActionMenu({ user, onView, onEdit, onResetPw, onForcePwChange, onChangeRole, onActivate, onDeactivate, onUnlock, onLock, onDelete }: any) {
   const [open, setOpen] = useState(false);
   const isLocked = user.lockedUntil && new Date(user.lockedUntil) > new Date();
   const isActive = user.status === "ACTIVE";
@@ -230,7 +230,6 @@ function UserActionMenu({ user, onView, onEdit, onResetPw, onChangePw, onForcePw
     { label: "View", icon: Eye, action: onView },
     { label: "Edit", icon: Edit2, action: onEdit },
     { label: "Reset Password", icon: KeyRound, action: onResetPw },
-    { label: "Change Password", icon: KeyRound, action: onChangePw },
     { label: "Force Password Change", icon: ShieldCheck, action: onForcePwChange },
     { label: "Change Role", icon: UserCog, action: onChangeRole },
     isActive
@@ -276,6 +275,10 @@ function CreateUserModal({ defaultRole, onClose, onSaved }: { defaultRole: strin
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isStrongPassword(form.password)) {
+      toast.error(PASSWORD_POLICY_MESSAGE);
+      return;
+    }
     setSaving(true);
     try {
       await api.post("/users", form);
@@ -291,7 +294,7 @@ function CreateUserModal({ defaultRole, onClose, onSaved }: { defaultRole: strin
         <Field label="Full Name *"><TextInput required value={form.name} onChange={(e) => set("name", e.target.value)} /></Field>
         <Field label="Email (login username) *"><TextInput required type="email" value={form.email} onChange={(e) => set("email", e.target.value)} /></Field>
         <Field label="Phone"><TextInput type="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} /></Field>
-        <Field label="Password *"><TextInput required type="password" value={form.password} onChange={(e) => set("password", e.target.value)} placeholder="Min. 6 characters" /></Field>
+        <Field label="Password *"><TextInput required type="password" value={form.password} onChange={(e) => set("password", e.target.value)} placeholder={PASSWORD_POLICY_MESSAGE} /></Field>
         <Field label="Role *">
           <Select value={form.role} onChange={(e) => set("role", e.target.value)}>
             {CREATE_ROLES.map((r) => (
@@ -369,26 +372,32 @@ function ResetPasswordModal({ user, onClose, onSaved }: any) {
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pw.length < 6) { toast.error("Password must be at least 6 characters"); return; }
+    if (!isStrongPassword(pw)) {
+      toast.error(PASSWORD_POLICY_MESSAGE);
+      return;
+    }
     setSaving(true);
     try {
       await api.patch(`/users/${user.id}/reset-password`, { newPassword: pw, forceChange: force });
-      toast.success("Password updated successfully");
+      toast.success("Password reset successfully");
       onSaved();
     } catch (err: any) { toast.error(err.message ?? "Failed"); } finally { setSaving(false); }
   };
 
   return (
     <Modal open onClose={onClose} title={`Reset Password — ${user.name}`}
-      footer={<><Button variant="outline" onClick={onClose}>Cancel</Button><Button loading={saving} onClick={(e: any) => save(e)}><KeyRound className="size-4" /> Save Password</Button></>}>
+      footer={<><Button variant="outline" onClick={onClose}>Cancel</Button><Button loading={saving} onClick={(e: any) => save(e)}><KeyRound className="size-4" /> Reset Password</Button></>}>
       <form onSubmit={save} className="space-y-4">
         <Field label="New Password *">
-          <TextInput required type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Min. 6 characters" />
+          <TextInput required type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder={PASSWORD_POLICY_MESSAGE} />
         </Field>
         <label className="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} className="size-4 rounded" />
           <span className="text-sm">Force user to change password on next login</span>
         </label>
+        <p className="text-xs text-muted-foreground">
+          The user&apos;s other sessions will be signed out. The new password is not shown again after reset.
+        </p>
       </form>
     </Modal>
   );

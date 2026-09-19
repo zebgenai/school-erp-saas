@@ -7,6 +7,7 @@ import {
   findCategoryByName,
   prepareBookSavePayload,
   resolveCategoryId,
+  resolveTotalCopies,
   toBookFormValues,
 } from "./library-book-form.ts";
 
@@ -150,5 +151,28 @@ describe("library book form", () => {
     assert.equal(payload.categoryId, "cat-english-1");
     assert.equal("category" in payload, false);
     assert.equal("categoryName" in payload, false);
+  });
+
+  it("defaults blank totalCopies to 1 (never sends 0)", () => {
+    assert.equal(resolveTotalCopies(""), 1);
+    assert.equal(resolveTotalCopies(null), 1);
+    assert.equal(resolveTotalCopies(undefined), 1);
+    assert.equal(resolveTotalCopies(0), 1);
+    assert.equal(resolveTotalCopies(-3), 1);
+    assert.equal(resolveTotalCopies("0"), 1);
+    assert.equal(resolveTotalCopies("5"), 5);
+    assert.equal(resolveTotalCopies(4), 4);
+
+    const blankPayload = buildCreateBookPayload(
+      { title: "Blank Qty", categoryName: "English", totalCopies: "", shelfLocation: "A" },
+      "cat-english-1",
+    );
+    assert.equal(blankPayload.totalCopies, 1);
+
+    const editPayload = buildCreateBookPayload(
+      { title: "Edit Qty", categoryName: "English", totalCopies: "", shelfLocation: "B" },
+      "cat-english-1",
+    );
+    assert.equal(editPayload.totalCopies, 1);
   });
 });

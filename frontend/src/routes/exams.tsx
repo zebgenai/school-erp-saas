@@ -10,6 +10,12 @@ import { useApiQuery, asList } from "@/lib/hooks";
 import { api } from "@/lib/api";
 import { usePermissions } from "@/lib/permissions";
 import { pdfApi } from "@/lib/pdfUtils";
+import {
+  buildExamPayload,
+  buildExamSubjectPayload,
+  examSubjectMarks,
+  toExamFormValues,
+} from "@/lib/exam-form";
 
 export const Route = createFileRoute("/exams")({
   head: () => ({ meta: [{ title: "Exams — School ERP" }] }),
@@ -27,14 +33,17 @@ function ExamsPage() {
   const [selected, setSelected] = useState<any | null>(null);
   const [form, setForm] = useState<any>({ name: "", classId: "", startDate: "", endDate: "" });
 
-  const open = (r: any | null) => { setForm(r ? { ...r, startDate: r.startDate?.slice(0, 10), endDate: r.endDate?.slice(0, 10) } : { name: "", classId: "", startDate: "", endDate: "" }); setModal({ open: true, data: r }); };
+  const open = (r: any | null) => {
+    setForm(toExamFormValues(r));
+    setModal({ open: true, data: r });
+  };
 
   const save = async () => {
-    if (!form.name) return toast.error("Name required");
     setBusy(true);
     try {
-      if (modal.data?.id) await api.patch(`/exams/${modal.data.id}`, form);
-      else await api.post("/exams", form);
+      const payload = buildExamPayload(form);
+      if (modal.data?.id) await api.patch(`/exams/${modal.data.id}`, payload);
+      else await api.post("/exams", payload);
       toast.success("Saved"); setModal({ open: false, data: null }); list.refetch();
     } catch (e: any) { toast.error(e.message); } finally { setBusy(false); }
   };
@@ -95,7 +104,7 @@ function ExamsPage() {
           <Field label="Exam Name"><TextInput value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Mid-term 2025" /></Field>
           <Field label="Class">
             <Select value={form.classId} onChange={(e) => setForm({ ...form, classId: e.target.value })}>
-              <option value="">All</option>
+              <option value="">Select class…</option>
               {asList<any>(classes.data).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Select>
           </Field>
@@ -120,7 +129,12 @@ function ExamDetail({ exam, onBack, canManage }: { exam: any; onBack: () => void
 
   const addSubject = async () => {
     setBusy(true);
-    try { await api.post(`/exams/${exam.id}/subjects`, form); toast.success("Subject added"); setAddOpen(false); subjects.refetch(); }
+    try {
+      await api.post(`/exams/${exam.id}/subjects`, buildExamSubjectPayload(form));
+      toast.success("Subject added");
+      setAddOpen(false);
+      subjects.refetch();
+    }
     catch (e: any) { toast.error(e.message); } finally { setBusy(false); }
   };
 
@@ -140,14 +154,17 @@ function ExamDetail({ exam, onBack, canManage }: { exam: any; onBack: () => void
           {subjects.loading ? <Skeleton className="h-32" /> :
             asList(subjects.data).length === 0 ? <EmptyState icon={ClipboardList} title="No subjects added" /> : (
             <ul className="divide-y">
-              {asList<any>(subjects.data).map((s) => (
+              {asList<any>(subjects.data).map((s) => {
+                const marks = examSubjectMarks(s);
+                return (
                 <li key={s.id} className="py-3 flex items-center justify-between">
                   <div>
                     <div className="font-medium">{s.subject?.name || s.name}</div>
-                    <div className="text-xs text-muted-foreground">Max {s.maxMarks} · Pass {s.passMarks}</div>
+                    <div className="text-xs text-muted-foreground">Max {marks.maxMarks} · Pass {marks.passMarks}</div>
                   </div>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
         </Card>
@@ -272,9 +289,10 @@ function ExamMarksEntry({ exam, subjects }: { exam: any; subjects: any[] }) {
         <Select value={subjectId} onChange={(e) => setSubjectId(e.target.value)} className="min-w-[240px]">
           {subjects.map((s) => {
             const sid = s.subjectId || s.subject?.id || s.id;
+            const marks = examSubjectMarks(s);
             return (
               <option key={s.id} value={sid}>
-                {s.subject?.name || s.name} (Max {s.maxMarks})
+                {s.subject?.name || s.name} (Max {marks.maxMarks})
               </option>
             );
           })}
@@ -297,7 +315,7 @@ function ExamMarksEntry({ exam, subjects }: { exam: any; subjects: any[] }) {
               <input
                 type="number"
                 min={0}
-                max={selectedSubject?.maxMarks ?? 100}
+                max={examSubjectMarks(selectedSubject).maxMarks || 100}
                 className="w-24 h-9 px-2 rounded-lg border bg-card text-sm text-right"
                 placeholder="—"
                 value={marks[s.id] ?? ""}

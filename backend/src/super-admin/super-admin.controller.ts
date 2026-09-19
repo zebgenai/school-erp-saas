@@ -96,7 +96,7 @@ class UpdateUserDto {
 }
 
 class ResetPasswordDto {
-  @IsString() @MinLength(6) newPassword: string;
+  @IsString() @IsStrongPassword() newPassword: string;
   @IsOptional() @IsBoolean() forceChange?: boolean;
 }
 
@@ -256,7 +256,7 @@ export class SuperAdminController {
     @Body() dto: ResetPasswordDto,
     @CurrentUserDecorator() user: CurrentUser,
   ) {
-    return this.service.resetUserPassword(id, dto.newPassword, dto.forceChange ?? false, user);
+    return this.service.resetUserPassword(id, dto.newPassword, dto.forceChange ?? true, user);
   }
 
   @Patch('users/:id/change-role')

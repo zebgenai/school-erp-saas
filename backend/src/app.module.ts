@@ -38,6 +38,7 @@ import { HomeworkModule } from './homework/homework.module';
 import { OnlineClassesModule } from './online-classes/online-classes.module';
 import { AcademicCalendarModule } from './academic-calendar/academic-calendar.module';
 import { TenantModule } from './common/tenant/tenant.module';
+import { IdCardsModule } from './id-cards/id-cards.module';
 
 @Injectable()
 class AppThrottlerGuard extends ThrottlerGuard {
@@ -74,6 +75,7 @@ class AppThrottlerGuard extends ThrottlerGuard {
     ParentsModule,
     FeesModule,
     AttendanceModule,
+    IdCardsModule,
     ExamsModule,
     ExpensesModule,
     PayrollModule,

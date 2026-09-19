@@ -19,6 +19,7 @@ import { Modal, ConfirmDialog } from "@/components/Modal";
 import { useApiQuery, asList } from "@/lib/hooks";
 import { api, tokenStore } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { PASSWORD_POLICY_MESSAGE, isStrongPassword } from "@/lib/force-password";
 import { RolesManagementTab } from "@/components/super-admin/RolesManagementTab";
 import { PlatformTeamTab } from "@/components/super-admin/PlatformTeamTab";
 import { isPlatformStaff } from "@/lib/permissions";
@@ -1045,7 +1046,7 @@ function CreateSchoolModal({ onClose, onSaved }: { onClose: () => void; onSaved:
             <Field label="Admin Full Name *"><TextInput required value={form.adminName} onChange={(e) => set("adminName", e.target.value)} placeholder="Muhammad Ali" /></Field>
             <Field label="Admin Email *"><TextInput required type="email" value={form.adminEmail} onChange={(e) => set("adminEmail", e.target.value)} placeholder="admin@school.com" /></Field>
             <Field label="Password *">
-              <TextInput required type="password" value={form.adminPassword} onChange={(e) => set("adminPassword", e.target.value)} placeholder="Min. 6 characters" />
+              <TextInput required type="password" value={form.adminPassword} onChange={(e) => set("adminPassword", e.target.value)} placeholder={PASSWORD_POLICY_MESSAGE} />
             </Field>
           </div>
         </div>
@@ -1467,6 +1468,10 @@ function CreateUserModal({ schoolId, schoolName, onClose, onSaved }: any) {
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isStrongPassword(form.password)) {
+      toast.error(PASSWORD_POLICY_MESSAGE);
+      return;
+    }
     setSaving(true);
     try {
       await api.post(`/super-admin/schools/${schoolId}/users`, form);
@@ -1481,7 +1486,7 @@ function CreateUserModal({ schoolId, schoolName, onClose, onSaved }: any) {
       <form onSubmit={save} className="grid sm:grid-cols-2 gap-4">
         <Field label="Full Name *"><TextInput required value={form.name} onChange={(e) => set("name", e.target.value)} /></Field>
         <Field label="Email *"><TextInput required type="email" value={form.email} onChange={(e) => set("email", e.target.value)} /></Field>
-        <Field label="Password *"><TextInput required type="password" value={form.password} onChange={(e) => set("password", e.target.value)} placeholder="Min. 6 chars" /></Field>
+        <Field label="Password *"><TextInput required type="password" value={form.password} onChange={(e) => set("password", e.target.value)} placeholder={PASSWORD_POLICY_MESSAGE} /></Field>
         <Field label="Role *">
           <Select value={form.role} onChange={(e) => set("role", e.target.value)}>
             {["SCHOOL_ADMIN","ACCOUNTANT","TEACHER","RECEPTIONIST","PARENT"].map((r) => (
@@ -1533,7 +1538,10 @@ function ResetPasswordModal({ user, onClose, onSaved }: any) {
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pw.length < 6) { toast.error("Password must be at least 6 characters"); return; }
+    if (!isStrongPassword(pw)) {
+      toast.error(PASSWORD_POLICY_MESSAGE);
+      return;
+    }
     setSaving(true);
     try {
       await api.patch(`/super-admin/users/${user.id}/reset-password`, { newPassword: pw, forceChange: force });
@@ -1547,14 +1555,14 @@ function ResetPasswordModal({ user, onClose, onSaved }: any) {
       footer={<><Button variant="outline" onClick={onClose}>Cancel</Button><Button loading={saving} onClick={(e: any) => save(e)}><KeyRound className="w-4 h-4" /> Reset Password</Button></>}>
       <form onSubmit={save} className="space-y-4">
         <Field label="New Password *">
-          <TextInput required type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Min. 6 characters" />
+          <TextInput required type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder={PASSWORD_POLICY_MESSAGE} />
         </Field>
         <label className="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} className="w-4 h-4 rounded" />
           <span className="text-sm">Force user to change password on next login</span>
         </label>
         <p className="text-xs text-muted-foreground bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
-          The user will be logged out and required to set a new password when they next log in.
+          The user&apos;s other sessions will be signed out. They must set a new password when they next log in if force-change is enabled. The new password is not shown again after reset.
         </p>
       </form>
     </Modal>

@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test src/lib/token-store.spec.ts src/lib/school-plan-display.spec.ts src/lib/errors.spec.ts src/lib/library-book-form.spec.ts src/lib/communication-notice-form.spec.ts",
+    "test": "node --experimental-strip-types --test src/lib/token-store.spec.ts src/lib/school-plan-display.spec.ts src/lib/errors.spec.ts src/lib/library-book-form.spec.ts src/lib/library-issue-form.spec.ts src/lib/communication-notice-form.spec.ts src/lib/id-card-data.spec.ts src/lib/qr-scanner-lifecycle.spec.ts src/lib/transport-vehicle-form.spec.ts src/lib/transport-route-form.spec.ts src/lib/exam-form.spec.ts src/lib/expense-form.spec.ts src/lib/section-form.spec.ts src/lib/force-password.spec.ts",
     "format": "prettier --write .",
     "start": "node scripts/render-server.mjs"
   },

@@ -446,6 +446,14 @@ export class AuthService {
     return crypto.createHash('sha256').update(token).digest('hex');
   }
 
+  /**
+   * Invalidate every refresh session for a user.
+   * Used after self-service password change, forgot-password reset, and admin password reset.
+   */
+  async revokeUserSessions(userId: string) {
+    await this.revokeAllRefreshTokens(userId);
+  }
+
   private async revokeAllRefreshTokens(userId: string) {
     await this.prisma.refreshToken.updateMany({
       where: { userId, revokedAt: null },

@@ -26,6 +26,9 @@ function Settings() {
     emailNotificationsEnabled: true,
     smsNotificationsEnabled: false,
     whatsappNotificationsEnabled: false,
+    idCardTemplate: "CLASSIC",
+    attendancePresentUntil: "",
+    attendanceLateUntil: "",
   });
   const [saving, setSaving] = useState(false);
 
@@ -41,6 +44,9 @@ function Settings() {
         emailNotificationsEnabled: s.emailNotificationsEnabled ?? true,
         smsNotificationsEnabled: s.smsNotificationsEnabled ?? false,
         whatsappNotificationsEnabled: s.whatsappNotificationsEnabled ?? false,
+        idCardTemplate: s.idCardTemplate || "CLASSIC",
+        attendancePresentUntil: s.attendancePresentUntil || "",
+        attendanceLateUntil: s.attendanceLateUntil || "",
       });
     }
   }, [school.data]);
@@ -62,6 +68,9 @@ function Settings() {
         emailNotificationsEnabled: f.emailNotificationsEnabled,
         smsNotificationsEnabled: f.smsNotificationsEnabled,
         whatsappNotificationsEnabled: f.whatsappNotificationsEnabled,
+        idCardTemplate: f.idCardTemplate,
+        attendancePresentUntil: f.attendancePresentUntil,
+        attendanceLateUntil: f.attendanceLateUntil,
       });
       toast.success("Settings saved");
       school.refetch();
@@ -90,6 +99,25 @@ function Settings() {
                   className="size-10 rounded-lg border cursor-pointer bg-card" />
                 <TextInput value={f.themeColor} onChange={(e) => setF({ ...f, themeColor: e.target.value })} />
               </div>
+            </Field>
+            <Field label="ID card template">
+              <select
+                value={f.idCardTemplate}
+                onChange={(e) => setF({ ...f, idCardTemplate: e.target.value })}
+                disabled={!canManage}
+                className="w-full h-11 px-3.5 rounded-xl border bg-card text-sm"
+              >
+                <option value="CLASSIC">Classic</option>
+                <option value="MODERN">Modern</option>
+                <option value="PREMIUM">Premium</option>
+                <option value="MINIMAL">Minimal</option>
+              </select>
+            </Field>
+            <Field label="Present until (HH:mm)" hint="QR scans after this time are marked Late. Leave empty to always mark Present.">
+              <TextInput value={f.attendancePresentUntil} onChange={(e) => setF({ ...f, attendancePresentUntil: e.target.value })} placeholder="08:00" disabled={!canManage} />
+            </Field>
+            <Field label="Late until (HH:mm)" hint="QR still records Late after this time. Automatic absent cutoff is not enabled.">
+              <TextInput value={f.attendanceLateUntil} onChange={(e) => setF({ ...f, attendanceLateUntil: e.target.value })} placeholder="08:15" disabled={!canManage} />
             </Field>
           </div>
           {canManage && (

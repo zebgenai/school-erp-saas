@@ -30,6 +30,8 @@ import { Route as ParentRouteImport } from './routes/parent'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LibraryRouteImport } from './routes/library'
+import { Route as IdCardsRouteImport } from './routes/id-cards'
+import { Route as ForceChangePasswordRouteImport } from './routes/force-change-password'
 import { Route as FeesRouteImport } from './routes/fees'
 import { Route as ExpensesRouteImport } from './routes/expenses'
 import { Route as ExamsRouteImport } from './routes/exams'
@@ -145,6 +147,16 @@ const LibraryRoute = LibraryRouteImport.update({
   path: '/library',
   getParentRoute: () => rootRouteImport,
 } as any)
+const IdCardsRoute = IdCardsRouteImport.update({
+  id: '/id-cards',
+  path: '/id-cards',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ForceChangePasswordRoute = ForceChangePasswordRouteImport.update({
+  id: '/force-change-password',
+  path: '/force-change-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FeesRoute = FeesRouteImport.update({
   id: '/fees',
   path: '/fees',
@@ -201,6 +213,8 @@ export interface FileRoutesByFullPath {
   '/exams': typeof ExamsRoute
   '/expenses': typeof ExpensesRoute
   '/fees': typeof FeesRoute
+  '/force-change-password': typeof ForceChangePasswordRoute
+  '/id-cards': typeof IdCardsRoute
   '/library': typeof LibraryRoute
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
@@ -233,6 +247,8 @@ export interface FileRoutesByTo {
   '/exams': typeof ExamsRoute
   '/expenses': typeof ExpensesRoute
   '/fees': typeof FeesRoute
+  '/force-change-password': typeof ForceChangePasswordRoute
+  '/id-cards': typeof IdCardsRoute
   '/library': typeof LibraryRoute
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
@@ -266,6 +282,8 @@ export interface FileRoutesById {
   '/exams': typeof ExamsRoute
   '/expenses': typeof ExpensesRoute
   '/fees': typeof FeesRoute
+  '/force-change-password': typeof ForceChangePasswordRoute
+  '/id-cards': typeof IdCardsRoute
   '/library': typeof LibraryRoute
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
@@ -300,6 +318,8 @@ export interface FileRouteTypes {
     | '/exams'
     | '/expenses'
     | '/fees'
+    | '/force-change-password'
+    | '/id-cards'
     | '/library'
     | '/login'
     | '/notifications'
@@ -332,6 +352,8 @@ export interface FileRouteTypes {
     | '/exams'
     | '/expenses'
     | '/fees'
+    | '/force-change-password'
+    | '/id-cards'
     | '/library'
     | '/login'
     | '/notifications'
@@ -364,6 +386,8 @@ export interface FileRouteTypes {
     | '/exams'
     | '/expenses'
     | '/fees'
+    | '/force-change-password'
+    | '/id-cards'
     | '/library'
     | '/login'
     | '/notifications'
@@ -397,6 +421,8 @@ export interface RootRouteChildren {
   ExamsRoute: typeof ExamsRoute
   ExpensesRoute: typeof ExpensesRoute
   FeesRoute: typeof FeesRoute
+  ForceChangePasswordRoute: typeof ForceChangePasswordRoute
+  IdCardsRoute: typeof IdCardsRoute
   LibraryRoute: typeof LibraryRoute
   LoginRoute: typeof LoginRoute
   NotificationsRoute: typeof NotificationsRoute
@@ -569,6 +595,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LibraryRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/id-cards': {
+      id: '/id-cards'
+      path: '/id-cards'
+      fullPath: '/id-cards'
+      preLoaderRoute: typeof IdCardsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/force-change-password': {
+      id: '/force-change-password'
+      path: '/force-change-password'
+      fullPath: '/force-change-password'
+      preLoaderRoute: typeof ForceChangePasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/fees': {
       id: '/fees'
       path: '/fees'
@@ -645,6 +685,8 @@ const rootRouteChildren: RootRouteChildren = {
   ExamsRoute: ExamsRoute,
   ExpensesRoute: ExpensesRoute,
   FeesRoute: FeesRoute,
+  ForceChangePasswordRoute: ForceChangePasswordRoute,
+  IdCardsRoute: IdCardsRoute,
   LibraryRoute: LibraryRoute,
   LoginRoute: LoginRoute,
   NotificationsRoute: NotificationsRoute,

@@ -1,4 +1,5 @@
-import { IsBoolean, IsEmail, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEmail, IsEnum, IsOptional, IsString, Matches } from 'class-validator';
+import { IdCardTemplate } from '@prisma/client';
 
 export class UpdateSchoolDto {
   @IsOptional()
@@ -44,4 +45,21 @@ export class UpdateSchoolDto {
   @IsOptional()
   @IsBoolean()
   whatsappNotificationsEnabled?: boolean;
+
+  @IsOptional()
+  @IsEnum(IdCardTemplate)
+  idCardTemplate?: IdCardTemplate;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^$|^[A-Za-z0-9_+\-/]+$/, { message: 'Use an IANA timezone id (e.g. Asia/Karachi)' })
+  timezone?: string;
+
+  @IsOptional()
+  @Matches(/^$|^([01]\d|2[0-3]):([0-5]\d)$/, { message: 'Use HH:mm (24-hour) or leave empty' })
+  attendancePresentUntil?: string;
+
+  @IsOptional()
+  @Matches(/^$|^([01]\d|2[0-3]):([0-5]\d)$/, { message: 'Use HH:mm (24-hour) or leave empty' })
+  attendanceLateUntil?: string;
 }

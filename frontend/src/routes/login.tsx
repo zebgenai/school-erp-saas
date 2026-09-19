@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { parseLoginError } from "@/lib/errors";
 import { consumeWrongHostFlag } from "@/lib/host";
 import { homeRouteForRole } from "@/lib/permissions";
+import { postAuthPath } from "@/lib/force-password";
 import { resolvePublicLogoSrc, usePublicSchoolBranding } from "@/lib/school-branding";
 import { useAppHost } from "@/lib/use-app-host";
 import { AuthBrandHeader } from "@/components/auth/AuthBrandHeader";
@@ -42,7 +43,7 @@ function LoginPage() {
 
   useEffect(() => {
     if (host.mode === "school" && (brandLoading || missing || !branding)) return;
-    if (user) router.navigate({ to: homeRouteForRole(user.role) });
+    if (user) router.navigate({ to: postAuthPath(user, homeRouteForRole) as "/" });
   }, [user, router, host.mode, brandLoading, missing, branding]);
 
   const copy = useMemo(() => {

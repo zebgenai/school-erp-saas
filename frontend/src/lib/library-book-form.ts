@@ -114,6 +114,18 @@ export async function resolveCategoryId(
 }
 
 /**
+ * Maps UI quantity to CreateBookDto.totalCopies.
+ * Blank → default 1 (matches backend `dto.totalCopies ?? 1`).
+ * Never emits 0 / NaN (backend @Min(1)).
+ */
+export function resolveTotalCopies(value: unknown): number {
+  if (value === "" || value === null || value === undefined) return 1;
+  const n = typeof value === "number" ? value : Number(String(value).trim());
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.floor(n);
+}
+
+/**
  * Builds the POST/PATCH /library/books body: CreateBookDto keys only.
  * `categoryName` is resolved to `categoryId` and never sent.
  */
@@ -125,6 +137,10 @@ export function buildCreateBookPayload(
   const payload: Record<string, unknown> = { categoryId };
   for (const fd of fields) {
     if (fd.key === "categoryName") continue;
+    if (fd.key === "totalCopies") {
+      payload.totalCopies = resolveTotalCopies(form.totalCopies);
+      continue;
+    }
     payload[fd.key] = fd.type === "number" ? Number(form[fd.key]) || 0 : form[fd.key];
   }
   return payload;

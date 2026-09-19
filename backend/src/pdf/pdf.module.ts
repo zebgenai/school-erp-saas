@@ -4,11 +4,12 @@ import { FeesModule } from '../fees/fees.module';
 import { PayrollModule } from '../payroll/payroll.module';
 import { ReportsModule } from '../reports/reports.module';
 import { StudentsModule } from '../students/students.module';
+import { IdCardsModule } from '../id-cards/id-cards.module';
 import { PdfController } from './pdf.controller';
 import { PdfService } from './pdf.service';
 
 @Module({
-  imports: [FeesModule, StudentsModule, ExamsModule, PayrollModule, ReportsModule],
+  imports: [FeesModule, StudentsModule, ExamsModule, PayrollModule, ReportsModule, IdCardsModule],
   controllers: [PdfController],
   providers: [PdfService],
   exports: [PdfService],

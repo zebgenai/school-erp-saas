@@ -107,6 +107,7 @@ const PERM_BACKEND_KEYS: Record<Permission, string[]> = {
 const ROUTE_PERMISSIONS: Record<string, Permission | null> = {
   "/dashboard": null,
   "/students": "students.view",
+  "/id-cards": "students.view",
   "/parents": "parents.view",
   "/teachers": "teachers.view",
   "/staff": "staff.view",

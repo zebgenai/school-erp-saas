@@ -76,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setUnauthorizedHandler(() => {
       setUser(null);
-      if (typeof window !== "undefined" && window.location.pathname !== "/login" && window.location.pathname !== "/verify-otp") {
+      if (typeof window !== "undefined" && window.location.pathname !== "/login" && window.location.pathname !== "/verify-otp" && window.location.pathname !== "/force-change-password") {
         window.location.href = pendingOtpPath();
       }
     });

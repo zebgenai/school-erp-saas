@@ -7,10 +7,12 @@ import {
 } from '@nestjs/common';
 import { AuditAction, UserRole, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { AuthService } from '../auth/auth.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { NotificationEngineService } from '../notifications/notification-engine.service';
 import { CurrentUser } from '../common/types/current-user.type';
 import { PrismaService } from '../prisma/prisma.service';
+import { assertStrongPassword } from '../common/validators/password.validator';
 import { ChangeRoleDto } from './dto/change-role.dto';
 import { CreateUserDto } from './dto-create-user';
 import { ResetPasswordDto } from './dto/reset-password.dto';
@@ -47,6 +49,7 @@ export class UsersService {
     private prisma: PrismaService,
     private auditLogs: AuditLogsService,
     private readonly notificationEngine: NotificationEngineService,
+    private readonly authService: AuthService,
   ) {}
 
   async create(dto: CreateUserDto, currentUser: CurrentUser) {
@@ -63,7 +66,8 @@ export class UsersService {
 
     await this.assertRoleEnabled(schoolId, dto.role);
 
-    const hashedPassword = await bcrypt.hash(dto.password, 10);
+    assertStrongPassword(dto.password);
+    const hashedPassword = await bcrypt.hash(dto.password, 12);
 
     const user = await this.prisma.user.create({
       data: {
@@ -74,6 +78,8 @@ export class UsersService {
         role: dto.role,
         status: UserStatus.ACTIVE,
         schoolId: dto.role === UserRole.SUPER_ADMIN ? null : schoolId,
+        // Admin-set passwords must be changed on first login.
+        forcePasswordChange: true,
       },
       select: USER_SELECT,
     });
@@ -137,13 +143,21 @@ export class UsersService {
       if (exists && exists.id !== id) throw new ConflictException('Email already exists');
     }
 
+    // Clearing the force flag is only allowed via /auth/change-password (or forgot-reset).
+    // Admins may still set forcePasswordChange=true to require a change.
+    if (dto.forcePasswordChange === false) {
+      throw new BadRequestException(
+        'forcePasswordChange can only be cleared when the user changes their password',
+      );
+    }
+
     const updated = await this.prisma.user.update({
       where: { id },
       data: {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
         ...(dto.email !== undefined ? { email: dto.email.toLowerCase() } : {}),
         ...(dto.phone !== undefined ? { phone: dto.phone || null } : {}),
-        ...(dto.forcePasswordChange !== undefined ? { forcePasswordChange: dto.forcePasswordChange } : {}),
+        ...(dto.forcePasswordChange === true ? { forcePasswordChange: true } : {}),
       },
       select: USER_SELECT,
     });
@@ -165,16 +179,20 @@ export class UsersService {
     const user = await this.findUserOrThrow(id);
     this.assertCanAccessUser(currentUser, user);
 
-    const hashed = await bcrypt.hash(dto.newPassword, 10);
+    assertStrongPassword(dto.newPassword);
+    const forceChange = dto.forceChange ?? true;
+    const hashed = await bcrypt.hash(dto.newPassword, 12);
     await this.prisma.user.update({
       where: { id },
       data: {
         password: hashed,
-        forcePasswordChange: dto.forceChange ?? true,
+        forcePasswordChange: forceChange,
         loginAttempts: 0,
         lockedUntil: null,
       },
     });
+
+    await this.authService.revokeUserSessions(id);
 
     if (user.schoolId) {
       await this.auditLogs.log({
@@ -182,7 +200,7 @@ export class UsersService {
         actorId: currentUser.id,
         actorName: currentUser.name,
         schoolId: user.schoolId,
-        metadata: { targetUserId: id, targetEmail: user.email, forceChange: dto.forceChange ?? true },
+        metadata: { targetUserId: id, targetEmail: user.email, forceChange },
       });
     }
 

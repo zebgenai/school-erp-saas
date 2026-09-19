@@ -13,6 +13,10 @@ import { useApiQuery, asList } from "@/lib/hooks";
 import { api } from "@/lib/api";
 import { usePermissions } from "@/lib/permissions";
 import { pdfApi } from "@/lib/pdfUtils";
+import {
+  buildExpenseCategoryPayload,
+  buildExpensePayload,
+} from "@/lib/expense-form";
 
 export const Route = createFileRoute("/expenses")({
   head: () => ({ meta: [{ title: "Expenses — School ERP" }] }),
@@ -120,9 +124,10 @@ function ExpensesTab() {
   const save = async (form: any) => {
     setSaving(true);
     try {
-      const payload = { ...form, amount: Number(form.amount) || 0 };
-      if (modal.data?.id) {
-        await api.patch(`/expenses/${modal.data.id}`, payload);
+      const editId = modal.data?.id;
+      const payload = buildExpensePayload(form, !!editId);
+      if (editId) {
+        await api.patch(`/expenses/${editId}`, payload);
         toast.success("Expense updated");
       } else {
         await api.post("/expenses", payload);
@@ -464,12 +469,14 @@ function ExpenseForm({
             placeholder="https://…"
           />
         </Field>
-        <Field label="Status">
-          <Select value={f.status} onChange={(e) => set("status", e.target.value)}>
-            <option value="ACTIVE">Active</option>
-            <option value="CANCELLED">Cancelled</option>
-          </Select>
-        </Field>
+        {isEdit && (
+          <Field label="Status">
+            <Select value={f.status} onChange={(e) => set("status", e.target.value)}>
+              <option value="ACTIVE">Active</option>
+              <option value="CANCELLED">Cancelled</option>
+            </Select>
+          </Field>
+        )}
         <div className="sm:col-span-2">
           <Field label="Description">
             <Textarea
@@ -501,11 +508,13 @@ function CategoriesTab() {
   const save = async (form: any) => {
     setSaving(true);
     try {
-      if (modal.data?.id) {
-        await api.patch(`/expenses/categories/${modal.data.id}`, form);
+      const editId = modal.data?.id;
+      const payload = buildExpenseCategoryPayload(form, !!editId);
+      if (editId) {
+        await api.patch(`/expenses/categories/${editId}`, payload);
         toast.success("Category updated");
       } else {
-        await api.post("/expenses/categories", form);
+        await api.post("/expenses/categories", payload);
         toast.success("Category created");
       }
       setModal({ open: false, data: null });

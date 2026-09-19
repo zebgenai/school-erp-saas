@@ -19,6 +19,7 @@ import { AttendanceService } from './attendance.service';
 import { AttendanceQueryDto } from './dto/attendance-query.dto';
 import { BulkAttendanceDto } from './dto/bulk-attendance.dto';
 import { MarkAttendanceDto } from './dto/mark-attendance.dto';
+import { QrScanDto } from './dto/qr-scan.dto';
 import { UpdateAttendanceDto } from './dto/update-attendance.dto';
 
 @ApiTags('Attendance')
@@ -40,6 +41,17 @@ export class AttendanceController {
   @Post('bulk')
   markBulk(@Body() dto: BulkAttendanceDto, @CurrentUserDecorator() user: CurrentUser) {
     return this.attendanceService.markBulk(dto, user);
+  }
+
+  @ApiOperation({
+    summary: 'Mark attendance from a student ID card QR token',
+    description:
+      'School-staff only (SCHOOL_ADMIN, TEACHER). SUPER_ADMIN is excluded because QR scans require unambiguous school context; platform admins should use manual attendance with an explicit schoolId.',
+  })
+  @Roles(UserRole.SCHOOL_ADMIN, UserRole.TEACHER)
+  @Post('qr-scan')
+  markFromQrScan(@Body() dto: QrScanDto, @CurrentUserDecorator() user: CurrentUser) {
+    return this.attendanceService.markFromQrScan(dto, user);
   }
 
   @ApiOperation({ summary: 'List attendance records' })
