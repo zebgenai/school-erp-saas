@@ -16,6 +16,7 @@ import {
   CampaignStatus,
   NotificationCategory,
   NotificationChannel,
+  NotificationStatus,
   PushPlatform,
   RecurrenceType,
   UserRole,
@@ -35,6 +36,7 @@ import { CurrentUserDecorator } from '../common/decorators/current-user.decorato
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser } from '../common/types/current-user.type';
+import { AttendanceWhatsAppService } from './attendance-whatsapp.service';
 import { NotificationAnalyticsService } from './notification-analytics.service';
 import { NotificationCampaignService } from './notification-campaign.service';
 import { NotificationTemplateService } from './notification-template.service';
@@ -191,6 +193,7 @@ export class NotificationsController {
     private readonly templates: NotificationTemplateService,
     private readonly campaigns: NotificationCampaignService,
     private readonly analytics: NotificationAnalyticsService,
+    private readonly attendanceWhatsApp: AttendanceWhatsAppService,
   ) {}
 
   // ── Inbox ─────────────────────────────────────────────────────────────────
@@ -406,6 +409,30 @@ export class NotificationsController {
       offset ? parseInt(offset, 10) : 0,
       { status, channel },
     );
+  }
+
+  @ApiOperation({ summary: 'WhatsApp attendance absence notification log (school-scoped)' })
+  @Roles(...ADMIN_ROLES)
+  @Get('logs/whatsapp-attendance')
+  whatsappAttendanceLogs(
+    @CurrentUserDecorator() user: CurrentUser,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('status') status?: NotificationStatus,
+    @Query('schoolId') schoolId?: string,
+  ) {
+    const resolvedSchoolId =
+      user.role === UserRole.SUPER_ADMIN ? (schoolId ?? user.schoolId ?? null) : user.schoolId ?? null;
+
+    if (!resolvedSchoolId) {
+      return { items: [], total: 0, limit: 50, offset: 0 };
+    }
+
+    return this.attendanceWhatsApp.listForSchool(resolvedSchoolId, {
+      limit: limit ? parseInt(limit, 10) : 50,
+      offset: offset ? parseInt(offset, 10) : 0,
+      status,
+    });
   }
 
   // ── Inbox item actions (parameterized — must be last) ─────────────────────

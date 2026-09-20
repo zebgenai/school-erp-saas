@@ -61,23 +61,34 @@ export class AttendanceService {
       markedById: currentUser.id,
     };
 
-    if (existing) {
-      return this.prisma.studentAttendance.update({
-        where: { id: existing.id },
-        data,
-        include: attendanceInclude,
-      });
+    const saved = existing
+      ? await this.prisma.studentAttendance.update({
+          where: { id: existing.id },
+          data,
+          include: attendanceInclude,
+        })
+      : await this.prisma.studentAttendance.create({
+          data: {
+            schoolId,
+            studentId: dto.studentId,
+            date,
+            ...data,
+          },
+          include: attendanceInclude,
+        });
+
+    if (dto.status === AttendanceStatus.ABSENT) {
+      this.notificationEngine.dispatch(() =>
+        this.notificationEngine.emitAttendanceAbsent(
+          schoolId,
+          dto.studentId,
+          date.toISOString(),
+          saved.id,
+        ),
+      );
     }
 
-    return this.prisma.studentAttendance.create({
-      data: {
-        schoolId,
-        studentId: dto.studentId,
-        date,
-        ...data,
-      },
-      include: attendanceInclude,
-    });
+    return saved;
   }
 
   async markBulk(dto: BulkAttendanceDto, currentUser: CurrentUser) {
@@ -121,14 +132,16 @@ export class AttendanceService {
         markedById: currentUser.id,
       };
 
+      let attendanceId: string;
       if (existing) {
         await this.prisma.studentAttendance.update({
           where: { id: existing.id },
           data,
         });
+        attendanceId = existing.id;
         updatedCount++;
       } else {
-        await this.prisma.studentAttendance.create({
+        const created = await this.prisma.studentAttendance.create({
           data: {
             schoolId,
             studentId: record.studentId,
@@ -136,6 +149,7 @@ export class AttendanceService {
             ...data,
           },
         });
+        attendanceId = created.id;
         createdCount++;
       }
 
@@ -145,6 +159,7 @@ export class AttendanceService {
             schoolId,
             record.studentId,
             date.toISOString(),
+            attendanceId,
           ),
         );
       }
@@ -321,7 +336,7 @@ export class AttendanceService {
     const attendance = await this.findAttendanceOrThrow(id);
     this.assertSchoolAccess(currentUser, attendance.schoolId);
 
-    return this.prisma.studentAttendance.update({
+    const updated = await this.prisma.studentAttendance.update({
       where: { id },
       data: {
         status: dto.status,
@@ -330,6 +345,19 @@ export class AttendanceService {
       },
       include: attendanceInclude,
     });
+
+    if (dto.status === AttendanceStatus.ABSENT) {
+      this.notificationEngine.dispatch(() =>
+        this.notificationEngine.emitAttendanceAbsent(
+          attendance.schoolId,
+          attendance.studentId,
+          attendance.date.toISOString(),
+          updated.id,
+        ),
+      );
+    }
+
+    return updated;
   }
 
   async getClassReport(currentUser: CurrentUser, query: AttendanceQueryDto) {

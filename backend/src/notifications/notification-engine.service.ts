@@ -1,13 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AttendanceWhatsAppService } from './attendance-whatsapp.service';
 import { NotificationEventType } from './notification.types';
 import { NotificationsService } from './notifications.service';
 import {
   admissionEmail,
   attendanceAlertEmail,
   attendanceAlertSms,
-  attendanceAlertWhatsApp,
   feeInvoiceEmail,
   feeReceiptEmail,
   feeReminderSms,
@@ -26,6 +26,7 @@ export class NotificationEngineService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly attendanceWhatsApp: AttendanceWhatsAppService,
   ) {}
 
   /** Fire-and-forget wrapper — never blocks business logic */
@@ -156,7 +157,12 @@ export class NotificationEngineService {
     });
   }
 
-  async emitAttendanceAbsent(schoolId: string, studentId: string, date: string) {
+  async emitAttendanceAbsent(
+    schoolId: string,
+    studentId: string,
+    date: string,
+    attendanceId?: string,
+  ) {
     const data = await this.loadStudentContext(studentId);
     if (!data) return;
 
@@ -168,6 +174,7 @@ export class NotificationEngineService {
       schoolName: school.name,
     });
 
+    // Email + SMS via existing path. WhatsApp absence uses the async queue provider.
     await this.notifyParents(schoolId, {
       eventType: 'ATTENDANCE_ABSENT',
       parentEmail,
@@ -175,8 +182,34 @@ export class NotificationEngineService {
       emailSubject: emailTpl.subject,
       emailBody: emailTpl.body,
       smsBody: attendanceAlertSms({ studentName: student.fullName, date: dateLabel }),
-      whatsappBody: attendanceAlertWhatsApp({ studentName: student.fullName, date: dateLabel }),
     });
+
+    let attendance =
+      attendanceId
+        ? await this.prisma.studentAttendance.findFirst({
+            where: { id: attendanceId, schoolId, studentId },
+          })
+        : null;
+
+    if (!attendance) {
+      attendance = await this.prisma.studentAttendance.findFirst({
+        where: {
+          schoolId,
+          studentId,
+          date: new Date(`${dateLabel}T00:00:00.000Z`),
+        },
+        orderBy: { updatedAt: 'desc' },
+      });
+    }
+
+    if (attendance) {
+      await this.attendanceWhatsApp.enqueueAbsentNotification({
+        schoolId,
+        studentId,
+        attendanceId: attendance.id,
+        attendanceDate: attendance.date,
+      });
+    }
 
     if (student.userId) {
       await this.notifications.sendInApp({

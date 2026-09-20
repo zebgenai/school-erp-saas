@@ -136,7 +136,7 @@ function Settings() {
             {[
               { key: "emailNotificationsEnabled" as const, label: "Email Notifications", desc: "Admission, invoices, receipts, attendance, results" },
               { key: "smsNotificationsEnabled" as const, label: "SMS Notifications", desc: "Fee reminders, attendance alerts, result alerts" },
-              { key: "whatsappNotificationsEnabled" as const, label: "WhatsApp Notifications", desc: "Fee reminders, attendance alerts, result alerts" },
+              { key: "whatsappNotificationsEnabled" as const, label: "WhatsApp Notifications", desc: "Absence alerts to parents (async queue). Provider credentials stay on the server." },
             ].map((ch) => (
               <label key={ch.key} className="flex items-center justify-between gap-4 p-3 rounded-lg border hover:bg-muted/30 cursor-pointer">
                 <div>

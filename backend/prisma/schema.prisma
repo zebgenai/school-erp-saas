@@ -188,6 +188,7 @@ model School {
   subscription      SchoolSubscription?
   saasInvoices      SaasInvoice[]
   idCards           StudentIdCard[]
+  notificationLogs  NotificationLog[]
 
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -480,6 +481,7 @@ model Student {
   homeworkSubmissions HomeworkSubmission[]
   onlineClassAttendances OnlineClassAttendance[]
   idCards        StudentIdCard[]
+  notificationLogs NotificationLog[]
 
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -589,6 +591,7 @@ model StudentAttendance {
   remarks    String?
   markedById String?
   markedBy   User?            @relation(fields: [markedById], references: [id])
+  notificationLogs NotificationLog[]
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
 
@@ -735,6 +738,7 @@ model Parent {
   email     String?
   address   String?
   status    String   @default("ACTIVE")
+  notificationLogs NotificationLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1110,10 +1114,13 @@ enum NotificationChannel {
 
 enum NotificationStatus {
   PENDING
+  PROCESSING
   SENT
   DELIVERED
+  READ
   FAILED
   RETRYING
+  SKIPPED
 }
 
 enum NotificationSeverity {
@@ -1180,13 +1187,18 @@ enum PushPlatform {
 model NotificationLog {
   id                String              @id @default(uuid())
   schoolId          String?
+  school            School?             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   eventType         String?
+  /// Stable business type, e.g. ATTENDANCE_ABSENT
+  notificationType  String?
   channel           NotificationChannel
   recipient         String
   subject           String?
   body              String
   status            NotificationStatus  @default(PENDING)
   error             String?
+  errorCode         String?
+  skipReason        String?
   sentAt            DateTime?
   deliveredAt       DateTime?
   readAt            DateTime?
@@ -1198,14 +1210,29 @@ model NotificationLog {
   retryCount        Int                 @default(0)
   providerMessageId String?
 
+  studentId    String?
+  student      Student?            @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  parentId     String?
+  parent       Parent?             @relation(fields: [parentId], references: [id], onDelete: SetNull)
+  attendanceId String?
+  attendance   StudentAttendance?  @relation(fields: [attendanceId], references: [id], onDelete: SetNull)
+
+  /// Deterministic key: schoolId:studentId:YYYY-MM-DD:ATTENDANCE_ABSENT:WHATSAPP
+  idempotencyKey String? @unique
+
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([schoolId])
+  @@index([schoolId, status])
+  @@index([schoolId, notificationType])
   @@index([status])
   @@index([channel])
   @@index([eventType])
   @@index([campaignId])
   @@index([senderId])
+  @@index([studentId])
+  @@index([attendanceId])
   @@index([createdAt])
 }
 
