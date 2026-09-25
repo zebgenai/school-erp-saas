@@ -52,7 +52,7 @@ export class UploadsController {
     return this.uploadsService.serveFile(filename, user);
   }
 
-  @Roles(UserRole.SUPER_ADMIN, UserRole.SCHOOL_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.SCHOOL_ADMIN, UserRole.RECEPTIONIST)
   @Post('student/:studentId/document')
   @UseInterceptors(FileInterceptor('file', { storage, fileFilter, limits: { fileSize: 5 * 1024 * 1024 } }))
   uploadStudentDoc(

@@ -16,6 +16,7 @@ import { FeesService } from '../fees/fees.service';
 import { CreateStudentDto } from './dto/create-student.dto';
 import { StudentQueryDto } from './dto/student-query.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
+import { syncFatherParent } from './father-parent-sync';
 
 function studentInclude(): Prisma.StudentInclude {
   const now = new Date();
@@ -81,25 +82,29 @@ export class StudentsService {
 
     await this.validateClassAndSection(schoolId, dto.classId, dto.sectionId);
 
-    const student = await this.prisma.student.create({
-      data: {
-        schoolId,
-        admissionNo: dto.admissionNo,
-        admissionDate: dto.admissionDate ? new Date(dto.admissionDate) : undefined,
-        fullName: dto.fullName,
-        fatherName: dto.fatherName,
-        guardianPhone: dto.guardianPhone,
-        whatsappNumber: dto.whatsappNumber,
-        gender: dto.gender,
-        dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : undefined,
-        address: dto.address,
-        photoUrl: dto.photoUrl,
-        classId: dto.classId,
-        sectionId: dto.sectionId,
-        monthlyFee: dto.monthlyFee,
-        status: dto.status,
-      },
-      include: studentInclude(),
+    const student = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.student.create({
+        data: {
+          schoolId,
+          admissionNo: dto.admissionNo,
+          admissionDate: dto.admissionDate ? new Date(dto.admissionDate) : undefined,
+          fullName: dto.fullName,
+          fatherName: dto.fatherName,
+          guardianPhone: dto.guardianPhone,
+          whatsappNumber: dto.whatsappNumber,
+          gender: dto.gender,
+          dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : undefined,
+          address: dto.address,
+          photoUrl: dto.photoUrl,
+          classId: dto.classId,
+          sectionId: dto.sectionId,
+          monthlyFee: dto.monthlyFee,
+          status: dto.status,
+        },
+        include: studentInclude(),
+      });
+      await syncFatherParent(tx, created);
+      return created;
     });
 
     this.notificationEngine.dispatch(() =>
@@ -147,25 +152,29 @@ export class StudentsService {
     const sectionId = dto.sectionId !== undefined ? dto.sectionId : student.sectionId;
     await this.validateClassAndSection(student.schoolId, classId, sectionId);
 
-    const updated = await this.prisma.student.update({
-      where: { id },
-      data: {
-        ...(dto.admissionNo !== undefined ? { admissionNo: dto.admissionNo } : {}),
-        ...(dto.admissionDate !== undefined ? { admissionDate: new Date(dto.admissionDate) } : {}),
-        ...(dto.fullName !== undefined ? { fullName: dto.fullName } : {}),
-        ...(dto.fatherName !== undefined ? { fatherName: dto.fatherName } : {}),
-        ...(dto.guardianPhone !== undefined ? { guardianPhone: dto.guardianPhone } : {}),
-        ...(dto.whatsappNumber !== undefined ? { whatsappNumber: dto.whatsappNumber } : {}),
-        ...(dto.gender !== undefined ? { gender: dto.gender } : {}),
-        ...(dto.dateOfBirth !== undefined ? { dateOfBirth: new Date(dto.dateOfBirth) } : {}),
-        ...(dto.address !== undefined ? { address: dto.address } : {}),
-        ...(dto.photoUrl !== undefined ? { photoUrl: dto.photoUrl } : {}),
-        ...(dto.classId !== undefined ? { classId: dto.classId } : {}),
-        ...(dto.sectionId !== undefined ? { sectionId: dto.sectionId } : {}),
-        ...(dto.monthlyFee !== undefined ? { monthlyFee: dto.monthlyFee } : {}),
-        ...(dto.status !== undefined ? { status: dto.status } : {}),
-      },
-      include: studentInclude(),
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const next = await tx.student.update({
+        where: { id },
+        data: {
+          ...(dto.admissionNo !== undefined ? { admissionNo: dto.admissionNo } : {}),
+          ...(dto.admissionDate !== undefined ? { admissionDate: new Date(dto.admissionDate) } : {}),
+          ...(dto.fullName !== undefined ? { fullName: dto.fullName } : {}),
+          ...(dto.fatherName !== undefined ? { fatherName: dto.fatherName } : {}),
+          ...(dto.guardianPhone !== undefined ? { guardianPhone: dto.guardianPhone } : {}),
+          ...(dto.whatsappNumber !== undefined ? { whatsappNumber: dto.whatsappNumber } : {}),
+          ...(dto.gender !== undefined ? { gender: dto.gender } : {}),
+          ...(dto.dateOfBirth !== undefined ? { dateOfBirth: new Date(dto.dateOfBirth) } : {}),
+          ...(dto.address !== undefined ? { address: dto.address } : {}),
+          ...(dto.photoUrl !== undefined ? { photoUrl: dto.photoUrl } : {}),
+          ...(dto.classId !== undefined ? { classId: dto.classId } : {}),
+          ...(dto.sectionId !== undefined ? { sectionId: dto.sectionId } : {}),
+          ...(dto.monthlyFee !== undefined ? { monthlyFee: dto.monthlyFee } : {}),
+          ...(dto.status !== undefined ? { status: dto.status } : {}),
+        },
+        include: studentInclude(),
+      });
+      await syncFatherParent(tx, next);
+      return next;
     });
 
     await this.schoolAudit.log({

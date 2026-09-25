@@ -62,7 +62,7 @@ function Students() {
   const students = asList<any>(list.data);
   const total = (list.data as any)?.total ?? students.length;
 
-  const save = async (form: any) => {
+  const save = async (form: any, pendingPhoto?: File | null) => {
     setSaving(true);
     try {
       // Only send fields accepted by the DTO — strip API-response-only fields
@@ -82,13 +82,25 @@ function Students() {
         delete payload.feeStatus;
       }
 
-      if (modal.data?.id) {
-        await api.patch(`/students/${modal.data.id}`, payload);
+      let studentId = modal.data?.id as string | undefined;
+      if (studentId) {
+        await api.patch(`/students/${studentId}`, payload);
         toastSuccess("Student updated successfully");
       } else {
-        await api.post("/students", payload);
+        const created = await api.post<any>("/students", payload);
+        studentId = created?.id;
         toastSuccess("Student created successfully");
       }
+
+      if (pendingPhoto && studentId) {
+        try {
+          await uploadStudentPhoto(studentId, pendingPhoto);
+          toastSuccess("Student photo uploaded successfully");
+        } catch (photoErr: any) {
+          toastError(photoErr, "Student saved, but photo upload failed");
+        }
+      }
+
       setModal({ open: false, data: null });
       list.refetch();
     } catch (e: any) {
@@ -302,13 +314,29 @@ function StudentForm({
     ...initial,
     feeStatus: initial?.feeInvoices?.[0]?.status === "PAID" ? "PAID" : (initial?.feeStatus || "UNPAID"),
   });
+  const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const photoRef = useRef<HTMLInputElement>(null);
   const set = (k: string, v: any) => setF((p: any) => ({ ...p, [k]: v }));
+
+  const displayPhoto = previewUrl || (f.photoUrl ? resolveFileUrl(f.photoUrl) : "");
+
+  const onPickPhoto = (file: File | null) => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    if (!file) {
+      setPendingPhoto(null);
+      setPreviewUrl(null);
+      return;
+    }
+    setPendingPhoto(file);
+    setPreviewUrl(URL.createObjectURL(file));
+  };
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!f.fullName?.trim()) return toast.error("Full name is required");
     if (!f.admissionNo?.trim()) return toast.error("Admission no is required");
-    onSave(f);
+    onSave(f, pendingPhoto);
   };
 
   return (
@@ -368,12 +396,55 @@ function StudentForm({
           </div>
         </div>
         <div className="sm:col-span-2"><Field label="Address"><Textarea value={f.address} onChange={(e) => set("address", e.target.value)} /></Field></div>
+        <div className="sm:col-span-2">
+          <Field label="Photo (Optional)">
+            <div className="flex items-center gap-4">
+              {displayPhoto ? (
+                <img src={displayPhoto} alt="Student photo preview"
+                  className="size-20 rounded-xl object-cover border" />
+              ) : (
+                <div className="size-20 rounded-xl border border-dashed grid place-items-center text-muted-foreground">
+                  <ImageIcon className="size-6" />
+                </div>
+              )}
+              <div>
+                <Button type="button" size="sm" variant="outline" onClick={() => photoRef.current?.click()}>
+                  <Upload className="w-3.5 h-3.5" /> {pendingPhoto || f.photoUrl ? "Change photo" : "Choose photo"}
+                </Button>
+                {pendingPhoto && (
+                  <button type="button" className="ml-2 text-xs text-muted-foreground underline"
+                    onClick={() => onPickPhoto(null)}>Clear</button>
+                )}
+                <p className="text-xs text-muted-foreground mt-1.5">Optional. JPG, PNG or WebP up to 5 MB. Saved after the student record.</p>
+                <input ref={photoRef} type="file" className="hidden" accept="image/*"
+                  onChange={(e) => onPickPhoto(e.target.files?.[0] || null)} />
+              </div>
+            </div>
+          </Field>
+        </div>
       </form>
     </Modal>
   );
 }
 
 // ─── Student Photo ─────────────────────────────────────────────────────────────
+
+/** Shared upload used by the create/edit form and the View-modal StudentPhoto control. */
+async function uploadStudentPhoto(studentId: string, file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await authorizedFetch(
+    `${getApiBaseUrl()}/uploads/student/${studentId}/document?type=PHOTO`,
+    { method: "POST", body: formData },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.message || "Upload failed");
+  }
+  const doc = await res.json();
+  await api.patch(`/students/${studentId}`, { photoUrl: doc.fileUrl });
+  return doc.fileUrl as string;
+}
 
 /**
  * Reuses the existing authenticated student-document upload (type=PHOTO) and then points
@@ -387,21 +458,10 @@ function StudentPhoto({
 
   const upload = async (file: File) => {
     setUploading(true);
-    const formData = new FormData();
-    formData.append("file", file);
     try {
-      const res = await authorizedFetch(
-        `${getApiBaseUrl()}/uploads/student/${student.id}/document?type=PHOTO`,
-        { method: "POST", body: formData },
-      );
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.message || "Upload failed");
-      }
-      const doc = await res.json();
-      await api.patch(`/students/${student.id}`, { photoUrl: doc.fileUrl });
+      const photoUrl = await uploadStudentPhoto(student.id, file);
       toastSuccess("Student photo updated successfully");
-      onUpdated(doc.fileUrl);
+      onUpdated(photoUrl);
     } catch (e: any) {
       toastError(e, "Photo upload failed");
     } finally {

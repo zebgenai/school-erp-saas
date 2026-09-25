@@ -17,7 +17,7 @@
     "seed:perf": "ts-node prisma/seed-performance.ts",
     "benchmark": "ts-node scripts/benchmark.ts",
     "typecheck": "tsc --noEmit -p tsconfig.build.json",
-    "test": "node --require ts-node/register --test src/common/tenant/school-slug.spec.ts src/common/tenant/tenant.phase1.spec.ts src/schools/public-school-branding.spec.ts src/schools/schools-mine.spec.ts src/super-admin/delete-school.spec.ts src/common/utils/school-time.spec.ts src/id-cards/qr-token.spec.ts src/id-cards/card-payload.spec.ts src/id-cards/id-cards.service.spec.ts src/attendance/qr-status.spec.ts src/attendance/attendance.qr.spec.ts src/auth/force-password.spec.ts src/pdf/id-cards-pdf.spec.ts src/whatsapp/whatsapp.spec.ts src/whatsapp/evolution.provider.spec.ts src/notifications/attendance-whatsapp.spec.ts"
+    "test": "node --require ts-node/register --test src/students/father-parent-sync.spec.ts src/common/tenant/school-slug.spec.ts src/common/tenant/tenant.phase1.spec.ts src/schools/public-school-branding.spec.ts src/schools/schools-mine.spec.ts src/super-admin/delete-school.spec.ts src/common/utils/school-time.spec.ts src/id-cards/qr-token.spec.ts src/id-cards/card-payload.spec.ts src/id-cards/id-cards.service.spec.ts src/attendance/qr-status.spec.ts src/attendance/attendance.qr.spec.ts src/auth/force-password.spec.ts src/pdf/id-cards-pdf.spec.ts src/whatsapp/whatsapp.spec.ts src/whatsapp/evolution.provider.spec.ts src/notifications/attendance-whatsapp.spec.ts"
   },
   "dependencies": {
     "@nestjs/bullmq": "^12.0.0",
