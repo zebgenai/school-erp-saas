@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Camera, CameraOff } from "lucide-react";
+import jsQR from "jsqr";
 import { api } from "@/lib/api";
 import { Button, TextInput } from "@/components/form";
 import { cn } from "@/lib/utils";
@@ -12,9 +13,12 @@ type ScanResponse = {
 };
 
 const SCAN_DEBOUNCE_MS = 2500;
+/** Cap decode resolution so jsQR stays responsive on HD webcam feeds. */
+const MAX_DECODE_WIDTH = 640;
 
 export function QrAttendanceScanner() {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [banner, setBanner] = useState<ScanResponse | null>(null);
@@ -75,6 +79,27 @@ export function QrAttendanceScanner() {
     }
   };
 
+  const decodeVideoFrame = (video: HTMLVideoElement): string | null => {
+    if (video.readyState < 2 || video.videoWidth < 2 || video.videoHeight < 2) return null;
+    if (!canvasRef.current) canvasRef.current = document.createElement("canvas");
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return null;
+
+    const scale = Math.min(1, MAX_DECODE_WIDTH / video.videoWidth);
+    const width = Math.max(1, Math.floor(video.videoWidth * scale));
+    const height = Math.max(1, Math.floor(video.videoHeight * scale));
+    if (canvas.width !== width) canvas.width = width;
+    if (canvas.height !== height) canvas.height = height;
+
+    ctx.drawImage(video, 0, 0, width, height);
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+      inversionAttempts: "dontInvert",
+    });
+    return code?.data?.trim() ? code.data : null;
+  };
+
   const start = async () => {
     // Restart must not overlap prior detection loops.
     stop();
@@ -95,34 +120,26 @@ export function QrAttendanceScanner() {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
-      setRunning(true);
-      const Detector = (
-        window as unknown as {
-          BarcodeDetector?: new (opts: { formats: string[] }) => {
-            detect: (src: ImageBitmapSource) => Promise<Array<{ rawValue?: string }>>;
-          };
-        }
-      ).BarcodeDetector;
-      if (!Detector) {
-        setError(
-          "Camera is on. This browser cannot decode QR automatically — use Chrome, Edge, or Safari, or paste the code below.",
-        );
+      if (generation !== loopGenerationRef.current || !mountedRef.current) {
+        stopStream();
         return;
       }
-      const detector = new Detector({ formats: ["qr_code"] });
+      setRunning(true);
+
       const tick = async () => {
         if (generation !== loopGenerationRef.current || !streamRef.current) return;
-        if (!videoRef.current || videoRef.current.readyState < 2) {
+        const video = videoRef.current;
+        if (!video || video.readyState < 2) {
           rafRef.current = requestAnimationFrame(tick);
           return;
         }
         try {
-          const codes = await detector.detect(videoRef.current);
-          if (generation !== loopGenerationRef.current) return;
-          const value = codes[0]?.rawValue;
-          if (value) await submitToken(value);
+          const value = decodeVideoFrame(video);
+          if (value && generation === loopGenerationRef.current) {
+            await submitToken(value);
+          }
         } catch {
-          /* keep scanning */
+          /* decoder/canvas glitches must not crash the page — keep scanning */
         }
         if (generation === loopGenerationRef.current && streamRef.current) {
           rafRef.current = requestAnimationFrame(tick);
