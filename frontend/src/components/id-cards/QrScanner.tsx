@@ -2,23 +2,29 @@ import { useEffect, useRef, useState } from "react";
 import { Camera, CameraOff } from "lucide-react";
 import jsQR from "jsqr";
 import { api } from "@/lib/api";
+import { ApiError } from "@/lib/errors";
 import { Button, TextInput } from "@/components/form";
+import { Modal } from "@/components/Modal";
 import { cn } from "@/lib/utils";
+import { ATTENDANCE_VOICE, speakAttendanceCue } from "@/lib/attendance-speech";
+import { classifyAttendanceQrToken } from "@/lib/qr-attendance-classify";
 import {
   formatWorkingHours,
   type TeacherPunchScanResult,
 } from "@/lib/teacher-attendance-ui";
 
-export type QrScannerMode = "student" | "teacher";
+export type QrScannerMode = "student" | "teacher" | "auto";
 
-type StudentScanResponse = {
+export type StudentScanResponse = {
   result: "SUCCESS" | "DUPLICATE" | "INVALID" | "REVOKED" | "INACTIVE_STUDENT";
   message: string;
   status?: string;
   duplicate?: boolean;
+  student?: { id: string; fullName: string; admissionNo?: string };
 };
 
 const SCAN_DEBOUNCE_MS = 2500;
+const SUCCESS_MODAL_MS = 2500;
 /** Cap decode resolution so jsQR stays responsive on HD webcam feeds. */
 const MAX_DECODE_WIDTH = 640;
 
@@ -28,10 +34,20 @@ type Props = {
   onResult?: (result: StudentScanResponse | TeacherPunchScanResult) => void;
 };
 
+type SuccessModalState = {
+  title: string;
+  name: string;
+  kind: "Student" | "Teacher";
+  statusLine: string;
+  timeLine: string;
+  extraLine?: string;
+};
+
 /**
  * Shared camera + jsQR scanner.
  * - student → POST /attendance/qr-scan with `{ token }` (CC1.)
  * - teacher → POST /attendance/teachers/qr-scan with `{ qrToken }` (TCC1.)
+ * - auto → classify prefix, then call the matching endpoint
  */
 export function QrAttendanceScanner({ mode = "student", onResult }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -42,11 +58,13 @@ export function QrAttendanceScanner({ mode = "student", onResult }: Props) {
   const [teacherBanner, setTeacherBanner] = useState<TeacherPunchScanResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [manual, setManual] = useState("");
+  const [successModal, setSuccessModal] = useState<SuccessModalState | null>(null);
   const lastRef = useRef<{ token: string; at: number }>({ token: "", at: 0 });
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
   const loopGenerationRef = useRef(0);
   const mountedRef = useRef(true);
+  const modalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearRaf = () => {
     if (rafRef.current != null) {
@@ -68,10 +86,27 @@ export function QrAttendanceScanner({ mode = "student", onResult }: Props) {
     if (mountedRef.current) setRunning(false);
   };
 
+  const clearModalTimer = () => {
+    if (modalTimerRef.current != null) {
+      clearTimeout(modalTimerRef.current);
+      modalTimerRef.current = null;
+    }
+  };
+
+  const showSuccessModal = (state: SuccessModalState) => {
+    clearModalTimer();
+    setSuccessModal(state);
+    modalTimerRef.current = setTimeout(() => {
+      if (mountedRef.current) setSuccessModal(null);
+      modalTimerRef.current = null;
+    }, SUCCESS_MODAL_MS);
+  };
+
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      clearModalTimer();
       stop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only
@@ -84,9 +119,155 @@ export function QrAttendanceScanner({ mode = "student", onResult }: Props) {
     setTeacherBanner(null);
     setError(null);
     setManual("");
+    setSuccessModal(null);
+    clearModalTimer();
     lastRef.current = { token: "", at: 0 };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mode switch reset
   }, [mode]);
+
+  const handleStudentResult = (res: StudentScanResponse) => {
+    setStudentBanner(res);
+    setTeacherBanner(null);
+    setError(null);
+    onResult?.(res);
+
+    if (res.result === "SUCCESS") {
+      const timeLine = new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+      showSuccessModal({
+        title: "Attendance Marked Successfully",
+        name: res.student?.fullName || "Student",
+        kind: "Student",
+        statusLine: res.status === "LATE" ? "Late" : "Present",
+        timeLine,
+      });
+      speakAttendanceCue(ATTENDANCE_VOICE.studentSuccess);
+      return;
+    }
+
+    if (res.result === "DUPLICATE") {
+      setError("Attendance already marked.");
+      speakAttendanceCue(ATTENDANCE_VOICE.alreadyMarked);
+      return;
+    }
+
+    setError(res.message || "Invalid or inactive QR code.");
+  };
+
+  const handleTeacherResult = (res: TeacherPunchScanResult) => {
+    setTeacherBanner(res);
+    setStudentBanner(null);
+    setError(null);
+    onResult?.(res);
+
+    const fmt = (iso?: string | Date | null) => {
+      if (!iso) return "—";
+      const d = typeof iso === "string" ? new Date(iso) : iso;
+      if (Number.isNaN(d.getTime())) return "—";
+      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    };
+
+    if (res.result === "CHECK_IN") {
+      showSuccessModal({
+        title: "Attendance Marked Successfully",
+        name: res.teacher?.fullName || "Teacher",
+        kind: "Teacher",
+        statusLine: "Check In",
+        timeLine: fmt(res.checkInAt),
+      });
+      speakAttendanceCue(ATTENDANCE_VOICE.teacherCheckIn);
+      return;
+    }
+
+    if (res.result === "CHECK_OUT") {
+      showSuccessModal({
+        title: "Attendance Marked Successfully",
+        name: res.teacher?.fullName || "Teacher",
+        kind: "Teacher",
+        statusLine: "Check Out",
+        timeLine: fmt(res.checkOutAt),
+        extraLine:
+          res.workingMinutes != null
+            ? `Working hours: ${formatWorkingHours(res.workingMinutes)}`
+            : undefined,
+      });
+      speakAttendanceCue(ATTENDANCE_VOICE.teacherCheckOut);
+      return;
+    }
+
+    if (res.result === "ALREADY_CHECKED_IN") {
+      setError("Teacher attendance already checked in.");
+      speakAttendanceCue(ATTENDANCE_VOICE.alreadyMarked);
+      return;
+    }
+
+    if (res.result === "ALREADY_COMPLETED") {
+      setError("Teacher attendance already completed.");
+      speakAttendanceCue(ATTENDANCE_VOICE.alreadyMarked);
+      return;
+    }
+
+    setError(res.message || "Invalid or inactive teacher QR code.");
+  };
+
+  const postStudent = async (token: string) => {
+    try {
+      const res = await api.post<StudentScanResponse>("/attendance/qr-scan", { token });
+      handleStudentResult(res);
+    } catch (e: unknown) {
+      if (e instanceof ApiError && e.status === 403) {
+        const fail: StudentScanResponse = {
+          result: "INVALID",
+          message: "You are not allowed to mark student attendance.",
+        };
+        setStudentBanner(fail);
+        setTeacherBanner(null);
+        setError(fail.message);
+        onResult?.(fail);
+        return;
+      }
+      const fail: StudentScanResponse = {
+        result: "INVALID",
+        message: e instanceof Error ? e.message : "Invalid or inactive QR code.",
+      };
+      setStudentBanner(fail);
+      setTeacherBanner(null);
+      setError(fail.message);
+      onResult?.(fail);
+    }
+  };
+
+  const postTeacher = async (token: string) => {
+    try {
+      const res = await api.post<TeacherPunchScanResult>("/attendance/teachers/qr-scan", {
+        qrToken: token,
+      });
+      handleTeacherResult(res);
+    } catch (e: unknown) {
+      if (e instanceof ApiError && e.status === 403) {
+        const fail: TeacherPunchScanResult = {
+          result: "INVALID_CARD",
+          message: "You are not allowed to mark teacher attendance.",
+        };
+        setTeacherBanner(fail);
+        setStudentBanner(null);
+        setError(fail.message);
+        onResult?.(fail);
+        return;
+      }
+      const fail: TeacherPunchScanResult = {
+        result: "INVALID_CARD",
+        message: e instanceof Error ? e.message : "Invalid or inactive teacher QR code.",
+      };
+      setTeacherBanner(fail);
+      setStudentBanner(null);
+      setError(fail.message);
+      onResult?.(fail);
+    }
+  };
 
   const submitToken = async (raw: string) => {
     const token = raw.trim();
@@ -96,38 +277,29 @@ export function QrAttendanceScanner({ mode = "student", onResult }: Props) {
     if (lastRef.current.token === token && now - lastRef.current.at < SCAN_DEBOUNCE_MS) return;
     lastRef.current = { token, at: now };
     setBusy(true);
+    setError(null);
     try {
-      if (mode === "teacher") {
-        const res = await api.post<TeacherPunchScanResult>("/attendance/teachers/qr-scan", {
-          qrToken: token,
-        });
-        setTeacherBanner(res);
-        setStudentBanner(null);
-        setError(null);
-        onResult?.(res);
-      } else {
-        const res = await api.post<StudentScanResponse>("/attendance/qr-scan", { token });
-        setStudentBanner(res);
-        setTeacherBanner(null);
-        setError(null);
-        onResult?.(res);
+      if (mode === "auto") {
+        const kind = classifyAttendanceQrToken(token);
+        if (kind === "teacher") {
+          await postTeacher(token);
+        } else if (kind === "student") {
+          await postStudent(token);
+        } else {
+          setStudentBanner(null);
+          setTeacherBanner(null);
+          setError("Invalid QR code. Use a student (CC1.) or teacher (TCC1.) ID card.");
+        }
+        return;
       }
-    } catch (e: any) {
+
       if (mode === "teacher") {
-        const fail: TeacherPunchScanResult = {
-          result: "INVALID_CARD",
-          message: e?.message || "Invalid or inactive teacher QR code.",
-        };
-        setTeacherBanner(fail);
-        onResult?.(fail);
-      } else {
-        const fail: StudentScanResponse = {
-          result: "INVALID",
-          message: e?.message || "Invalid or inactive QR code.",
-        };
-        setStudentBanner(fail);
-        onResult?.(fail);
+        await postTeacher(token);
+        return;
       }
+
+      // Default / student — unchanged contract
+      await postStudent(token);
     } finally {
       setBusy(false);
     }
@@ -214,12 +386,29 @@ export function QrAttendanceScanner({ mode = "student", onResult }: Props) {
           ? "bg-rose-50 text-rose-800 border-rose-200"
           : "";
 
+  const heading =
+    mode === "auto"
+      ? { title: "QR Attendance", subtitle: "Scan a student or teacher ID card" }
+      : mode === "teacher"
+        ? { title: "Teacher Attendance", subtitle: "Scan Teacher ID Card" }
+        : null;
+
+  const placeholder =
+    mode === "auto"
+      ? "Or paste a CC1. / TCC1. QR token"
+      : mode === "teacher"
+        ? "Or paste a TCC1 teacher QR token"
+        : "Or paste a QR token";
+
+  const showStudentBanner = (mode === "student" || mode === "auto") && studentBanner;
+  const showTeacherBanner = (mode === "teacher" || mode === "auto") && teacherBanner;
+
   return (
     <div className="space-y-4">
-      {mode === "teacher" && (
+      {heading && (
         <div>
-          <h3 className="font-semibold text-base">Teacher Attendance</h3>
-          <p className="text-sm text-muted-foreground">Scan Teacher ID Card</p>
+          <h3 className="font-semibold text-base">{heading.title}</h3>
+          <p className="text-sm text-muted-foreground">{heading.subtitle}</p>
         </div>
       )}
       <div className="relative rounded-2xl overflow-hidden border bg-black aspect-video max-w-xl">
@@ -240,12 +429,17 @@ export function QrAttendanceScanner({ mode = "student", onResult }: Props) {
         )}
       </div>
       {error && <p className="text-sm text-amber-700">{error}</p>}
-      {mode === "student" && studentBanner && (
+      {showStudentBanner && mode === "student" && (
         <div className={cn("rounded-xl border px-4 py-3 text-sm font-medium", studentTone)}>
           {studentBanner.message}
         </div>
       )}
-      {mode === "teacher" && teacherBanner && <TeacherScanResultBanner result={teacherBanner} />}
+      {showStudentBanner && mode === "auto" && studentBanner.result !== "SUCCESS" && (
+        <div className={cn("rounded-xl border px-4 py-3 text-sm font-medium", studentTone)}>
+          {studentBanner.result === "DUPLICATE" ? "Attendance already marked." : studentBanner.message}
+        </div>
+      )}
+      {showTeacherBanner && <TeacherScanResultBanner result={teacherBanner!} />}
       <form
         className="flex gap-2 max-w-xl"
         onSubmit={(e) => {
@@ -256,12 +450,32 @@ export function QrAttendanceScanner({ mode = "student", onResult }: Props) {
         <TextInput
           value={manual}
           onChange={(e) => setManual(e.target.value)}
-          placeholder={mode === "teacher" ? "Or paste a TCC1 teacher QR token" : "Or paste a QR token"}
+          placeholder={placeholder}
         />
         <Button type="submit" variant="outline" loading={busy}>
-          {mode === "teacher" ? "Punch" : "Mark"}
+          {mode === "teacher" ? "Punch" : mode === "auto" ? "Scan" : "Mark"}
         </Button>
       </form>
+
+      <Modal
+        open={!!successModal}
+        onClose={() => {
+          clearModalTimer();
+          setSuccessModal(null);
+        }}
+        title={successModal?.title || "Attendance Marked Successfully"}
+        size="sm"
+      >
+        {successModal && (
+          <div className="space-y-2 text-sm">
+            <div className="text-lg font-semibold">{successModal.name}</div>
+            <div className="text-muted-foreground">{successModal.kind}</div>
+            <div className="font-medium">{successModal.statusLine}</div>
+            <div>Time: {successModal.timeLine}</div>
+            {successModal.extraLine ? <div>{successModal.extraLine}</div> : null}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

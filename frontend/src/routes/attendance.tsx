@@ -28,6 +28,17 @@ type Audience = "students" | "teachers";
 
 function AttendancePage() {
   const [audience, setAudience] = useState<Audience>("students");
+  const { user } = useAuth();
+  const { can } = usePermissions();
+  const canMark = can("attendance.mark");
+  const role = (user?.role || "").toUpperCase();
+  const canScan =
+    Boolean(user?.schoolId) &&
+    (canMark || role === "RECEPTIONIST") &&
+    role !== "SUPER_ADMIN" &&
+    role !== "PLATFORM_MANAGER";
+  const [showScanner, setShowScanner] = useState(false);
+  const [teacherReload, setTeacherReload] = useState(0);
 
   return (
     <div>
@@ -38,7 +49,24 @@ function AttendancePage() {
             ? "Teacher check-in / check-out and QR scanning at the gate."
             : "Mark daily attendance for each class and section."
         }
+        actions={
+          canScan ? (
+            <Button onClick={() => setShowScanner((v) => !v)}>
+              <QrCode className="size-4" /> {showScanner ? "Hide QR scanner" : "QR scanner"}
+            </Button>
+          ) : undefined
+        }
       />
+
+      {showScanner && canScan && (
+        <Card className="mb-4">
+          <QrAttendanceScanner
+            mode="auto"
+            onResult={() => setTeacherReload((n) => n + 1)}
+          />
+        </Card>
+      )}
+
       <div className="flex flex-wrap gap-2 mb-4">
         {(["students", "teachers"] as Audience[]).map((a) => (
           <button
@@ -54,7 +82,11 @@ function AttendancePage() {
           </button>
         ))}
       </div>
-      {audience === "students" ? <StudentAttendancePanel /> : <TeacherAttendancePanel />}
+      {audience === "students" ? (
+        <StudentAttendancePanel />
+      ) : (
+        <TeacherAttendancePanel reloadToken={teacherReload} />
+      )}
     </div>
   );
 }
@@ -222,21 +254,15 @@ function StudentAttendancePanel() {
   );
 }
 
-function TeacherAttendancePanel() {
-  const { can } = usePermissions();
-  const { user } = useAuth();
-  const canMark = can("attendance.mark");
-  const role = (user?.role || "").toUpperCase();
-  // Mirror backend QR roles: school staff with school context (not SUPER_ADMIN).
-  const canScan =
-    Boolean(user?.schoolId) &&
-    (canMark || role === "RECEPTIONIST") &&
-    role !== "SUPER_ADMIN" &&
-    role !== "PLATFORM_MANAGER";
+function TeacherAttendancePanel({ reloadToken = 0 }: { reloadToken?: number }) {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [showScanner, setShowScanner] = useState(false);
   const list = useApiQuery<any>("/attendance/teachers", { workDate: date, limit: 200 });
   const rows = asList<any>(list.data);
+
+  useEffect(() => {
+    if (reloadToken > 0) list.refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch on scanner success only
+  }, [reloadToken]);
 
   const fmtTime = (iso?: string | null) => {
     if (!iso) return "—";
@@ -261,24 +287,11 @@ function TeacherAttendancePanel() {
               className="h-10 px-3 rounded-lg border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
             />
           </div>
-          {canScan && (
-            <Button onClick={() => setShowScanner((v) => !v)}>
-              <QrCode className="size-4" /> {showScanner ? "Hide scanner" : "Scan Teacher QR"}
-            </Button>
-          )}
+          <p className="text-xs text-muted-foreground max-w-xs text-right">
+            Use the page QR scanner for student (CC1.) or teacher (TCC1.) cards — no tab switch needed.
+          </p>
         </div>
       </Card>
-
-      {showScanner && canScan && (
-        <Card>
-          <QrAttendanceScanner
-            mode="teacher"
-            onResult={() => {
-              list.refetch();
-            }}
-          />
-        </Card>
-      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <Card hover>
@@ -305,7 +318,7 @@ function TeacherAttendancePanel() {
           <EmptyState
             icon={CalendarCheck}
             title="No teacher punches yet"
-            description="Scan a Teacher ID Card QR to check in staff."
+            description="Open QR scanner and scan a Teacher ID Card."
           />
         ) : (
           <div className="overflow-x-auto">
