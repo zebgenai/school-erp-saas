@@ -96,6 +96,44 @@ export class UploadsService implements OnModuleInit {
     return doc;
   }
 
+  async saveTeacherPhoto(
+    file: Express.Multer.File,
+    teacherId: string,
+    currentUser: CurrentUser,
+  ) {
+    this.validateUploadedFile(file);
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (!['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) {
+      throw new BadRequestException('Only images (JPEG, PNG, WEBP) are allowed');
+    }
+
+    const teacher = await this.prisma.teacher.findUnique({ where: { id: teacherId } });
+    if (!teacher) throw new NotFoundException('Teacher not found');
+    if (teacher.schoolId !== currentUser.schoolId && currentUser.role !== 'SUPER_ADMIN') {
+      throw new BadRequestException('Access denied');
+    }
+
+    const fileUrl = `/uploads/${file.filename}`;
+    const updated = await this.prisma.teacher.update({
+      where: { id: teacherId },
+      data: { photoUrl: fileUrl },
+    });
+
+    await this.schoolAudit.log({
+      schoolId: teacher.schoolId,
+      userId: currentUser.id,
+      actorName: currentUser.name,
+      action: 'TEACHER_PHOTO_UPLOADED',
+      entity: 'Teacher',
+      entityId: teacher.id,
+      description: `Photo uploaded for ${teacher.fullName}.`,
+      details: { teacherId, fileName: file.originalname },
+      dedupeKey: `audit:teacher-photo:${teacher.id}:${file.filename}`,
+    });
+
+    return { photoUrl: fileUrl, teacher: updated };
+  }
+
   async getStudentDocuments(studentId: string, currentUser: CurrentUser) {
     const student = await this.prisma.student.findUnique({ where: { id: studentId } });
     if (!student) throw new NotFoundException('Student not found');
@@ -231,6 +269,14 @@ export class UploadsService implements OnModuleInit {
     const school = await this.prisma.school.findFirst({ where: { logoUrl: fileUrl } });
     if (school) {
       if (school.id !== currentUser.schoolId) {
+        throw new ForbiddenException('Access denied');
+      }
+      return;
+    }
+
+    const teacher = await this.prisma.teacher.findFirst({ where: { photoUrl: fileUrl } });
+    if (teacher) {
+      if (teacher.schoolId !== currentUser.schoolId) {
         throw new ForbiddenException('Access denied');
       }
       return;

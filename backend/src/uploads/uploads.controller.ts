@@ -64,6 +64,33 @@ export class UploadsController {
     return this.uploadsService.saveStudentDocument(file, studentId, docType || DocumentType.OTHER, user);
   }
 
+  @Roles(UserRole.SUPER_ADMIN, UserRole.SCHOOL_ADMIN, UserRole.RECEPTIONIST)
+  @Post('teacher/:teacherId/photo')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage,
+      fileFilter: (_req: any, file: Express.Multer.File, cb: any) => {
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (
+          ['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype) &&
+          ['.jpg', '.jpeg', '.png', '.webp'].includes(ext)
+        ) {
+          cb(null, true);
+        } else {
+          cb(new Error('Only images (JPEG, PNG, WEBP) are allowed'), false);
+        }
+      },
+      limits: { fileSize: 2 * 1024 * 1024 },
+    }),
+  )
+  uploadTeacherPhoto(
+    @Param('teacherId') teacherId: string,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUserDecorator() user: CurrentUser,
+  ) {
+    return this.uploadsService.saveTeacherPhoto(file, teacherId, user);
+  }
+
   @Roles(UserRole.SUPER_ADMIN, UserRole.SCHOOL_ADMIN, UserRole.TEACHER)
   @Get('student/:studentId/documents')
   getStudentDocs(@Param('studentId') studentId: string, @CurrentUserDecorator() user: CurrentUser) {

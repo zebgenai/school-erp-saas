@@ -11,7 +11,9 @@ import { FeesService } from '../fees/fees.service';
 import { PayrollService } from '../payroll/payroll.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { IdCardView } from '../id-cards/card-payload';
+import { TeacherIdCardView } from '../id-cards/teacher-card-payload';
 import { IdCardsService } from '../id-cards/id-cards.service';
+import { TeacherIdCardsService } from '../id-cards/teacher-id-cards.service';
 import { qrTokenToPng } from '../id-cards/qr-render';
 import { resolveUploadDiskPath } from '../common/utils/upload-path';
 import { DashboardQueryDto } from '../reports/dto/dashboard-query.dto';
@@ -33,8 +35,10 @@ import {
 } from './templates/student.template';
 import { renderClassTimetable } from './templates/timetable.template';
 import { renderIdCardSheet } from './templates/id-card.template';
+import { renderTeacherIdCardSheet } from './templates/teacher-id-card.template';
 import { ZipEntry, createZipBuffer } from './zip-base';
 import { IdCardsPdfDto } from './dto/id-cards-pdf.dto';
+import { TeacherIdCardsPdfDto } from './dto/teacher-id-cards-pdf.dto';
 
 export interface PdfOutput {
   buffer: Buffer;
@@ -58,6 +62,7 @@ export class PdfService {
     private readonly payrollService: PayrollService,
     private readonly reportsService: ReportsService,
     private readonly idCardsService: IdCardsService,
+    private readonly teacherIdCardsService: TeacherIdCardsService,
   ) {}
 
   async generateFeeInvoice(invoiceId: string, user: CurrentUser): Promise<PdfOutput> {
@@ -419,6 +424,58 @@ export class PdfService {
       { size: 'A4', margin: 24, bufferPages: true, layout: 'portrait' },
     );
     return { buffer, filename: `id-cards-${cards.length}.pdf` };
+  }
+
+  async generateTeacherIdCards(dto: TeacherIdCardsPdfDto, user: CurrentUser): Promise<PdfOutput> {
+    const MAX_PDF_BATCHES = 100;
+    const cards: Array<TeacherIdCardView & { qrPng?: Buffer; photoPath?: string | null }> = [];
+
+    let cursor = dto.cursor;
+    let batches = 0;
+    let hasMore = true;
+
+    while (hasMore && batches < MAX_PDF_BATCHES) {
+      batches += 1;
+      const preview = await this.teacherIdCardsService.preview(
+        {
+          teacherIds: dto.teacherIds,
+          allActive: dto.allActive,
+          cursor,
+          template: dto.template,
+          schoolId: dto.schoolId,
+        },
+        user,
+      );
+
+      if (preview.cards.length === 0) {
+        break;
+      }
+
+      const batch = await Promise.all(
+        preview.cards.map(async (card) => ({
+          ...card,
+          qrPng: card.qrToken ? await qrTokenToPng(card.qrToken) : undefined,
+          photoPath: resolveUploadDiskPath(card.teacher.photoUrl),
+        })),
+      );
+      cards.push(...batch);
+
+      if (dto.teacherIds?.length || !preview.hasMore || !preview.nextCursor) {
+        hasMore = false;
+      } else {
+        cursor = preview.nextCursor;
+      }
+    }
+
+    if (cards.length === 0) {
+      throw new BadRequestException('No teachers matched the ID card selection');
+    }
+
+    const buffer = await createPdfBuffer(
+      (doc) => renderTeacherIdCardSheet(doc, cards),
+      { size: 'A4', margin: 24, bufferPages: true, layout: 'portrait' },
+    );
+    return { buffer, filename: `teacher-id-cards-${cards.length}.pdf` };
   }
 
   private async getSchoolInfo(schoolId: string): Promise<SchoolPdfInfo> {

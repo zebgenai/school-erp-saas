@@ -6,10 +6,15 @@ import { toastSuccess, toastError } from "@/lib/errors";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, PageHeader, Skeleton, EmptyState, StatusBadge, ErrorState } from "@/components/ui-kit";
 import { Button, Select } from "@/components/form";
+import { QrAttendanceScanner } from "@/components/id-cards/QrScanner";
 import { useApiQuery, asList } from "@/lib/hooks";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { usePermissions } from "@/lib/permissions";
+import {
+  formatWorkingHours,
+  teacherAttendanceStatusLabel,
+} from "@/lib/teacher-attendance-ui";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/attendance")({
@@ -19,8 +24,42 @@ export const Route = createFileRoute("/attendance")({
 
 const STATUSES = ["PRESENT", "ABSENT", "LEAVE", "LATE"] as const;
 type S = typeof STATUSES[number];
+type Audience = "students" | "teachers";
 
 function AttendancePage() {
+  const [audience, setAudience] = useState<Audience>("students");
+
+  return (
+    <div>
+      <PageHeader
+        title="Attendance"
+        description={
+          audience === "teachers"
+            ? "Teacher check-in / check-out and QR scanning at the gate."
+            : "Mark daily attendance for each class and section."
+        }
+      />
+      <div className="flex flex-wrap gap-2 mb-4">
+        {(["students", "teachers"] as Audience[]).map((a) => (
+          <button
+            key={a}
+            type="button"
+            onClick={() => setAudience(a)}
+            className={cn(
+              "h-8 px-3 rounded-lg text-sm font-medium border",
+              audience === a ? "bg-muted border-primary/40" : "bg-card hover:bg-muted/60",
+            )}
+          >
+            {a === "students" ? "Students" : "Teachers"}
+          </button>
+        ))}
+      </div>
+      {audience === "students" ? <StudentAttendancePanel /> : <TeacherAttendancePanel />}
+    </div>
+  );
+}
+
+function StudentAttendancePanel() {
   const { user } = useAuth();
   const { can } = usePermissions();
   const canMark = can("attendance.mark");
@@ -66,7 +105,7 @@ function AttendancePage() {
       if (sectionId) body.sectionId = sectionId;
       if (isSuper && schoolId) body.schoolId = schoolId;
       await api.post("/attendance/bulk", body);
-        toastSuccess("Attendance saved successfully");
+      toastSuccess("Attendance saved successfully");
       existing.refetch(); summary.refetch();
     } catch (e: any) { toastError(e); }
     finally { setSaving(false); }
@@ -78,19 +117,15 @@ function AttendancePage() {
     return c;
   }, [marks]);
 
-  const s = summary.data || {};
-
   return (
     <div>
-      <PageHeader
-        title="Attendance"
-        description="Mark daily attendance for each class and section."
-        actions={canMark ? (
+      <div className="flex justify-end mb-4">
+        {canMark ? (
           <Link to="/id-cards">
-            <Button variant="outline"><QrCode className="size-4" /> QR scanner</Button>
+            <Button variant="outline"><QrCode className="size-4" /> Student QR scanner</Button>
           </Link>
-        ) : undefined}
-      />
+        ) : null}
+      </div>
 
       <Card className="mb-4">
         <div className="grid sm:grid-cols-4 gap-3">
@@ -181,6 +216,128 @@ function AttendancePage() {
               );
             })}
           </ul>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function TeacherAttendancePanel() {
+  const { can } = usePermissions();
+  const { user } = useAuth();
+  const canMark = can("attendance.mark");
+  const role = (user?.role || "").toUpperCase();
+  // Mirror backend QR roles: school staff with school context (not SUPER_ADMIN).
+  const canScan =
+    Boolean(user?.schoolId) &&
+    (canMark || role === "RECEPTIONIST") &&
+    role !== "SUPER_ADMIN" &&
+    role !== "PLATFORM_MANAGER";
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [showScanner, setShowScanner] = useState(false);
+  const list = useApiQuery<any>("/attendance/teachers", { workDate: date, limit: 200 });
+  const rows = asList<any>(list.data);
+
+  const fmtTime = (iso?: string | null) => {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "—";
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const checkedIn = rows.filter((r) => r.checkInAt && !r.checkOutAt).length;
+  const completed = rows.filter((r) => r.checkOutAt).length;
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <div className="flex flex-wrap items-end gap-3 justify-between">
+          <div>
+            <div className="text-xs text-muted-foreground mb-1">Today / work date</div>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="h-10 px-3 rounded-lg border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
+            />
+          </div>
+          {canScan && (
+            <Button onClick={() => setShowScanner((v) => !v)}>
+              <QrCode className="size-4" /> {showScanner ? "Hide scanner" : "Scan Teacher QR"}
+            </Button>
+          )}
+        </div>
+      </Card>
+
+      {showScanner && canScan && (
+        <Card>
+          <QrAttendanceScanner
+            mode="teacher"
+            onResult={() => {
+              list.refetch();
+            }}
+          />
+        </Card>
+      )}
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <Card hover>
+          <div className="text-xs text-muted-foreground">Records</div>
+          <div className="text-xl font-bold">{rows.length}</div>
+        </Card>
+        <Card hover>
+          <div className="text-xs text-muted-foreground">Checked in</div>
+          <div className="text-xl font-bold text-amber-700">{checkedIn}</div>
+        </Card>
+        <Card hover>
+          <div className="text-xs text-muted-foreground">Completed</div>
+          <div className="text-xl font-bold text-emerald-700">{completed}</div>
+        </Card>
+      </div>
+
+      <Card className="p-0 overflow-hidden">
+        <div className="p-4 border-b font-semibold">Teacher attendance · {date}</div>
+        {list.loading ? (
+          <div className="p-6 space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12" />)}</div>
+        ) : list.error ? (
+          <ErrorState message={list.error} onRetry={list.refetch} />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            icon={CalendarCheck}
+            title="No teacher punches yet"
+            description="Scan a Teacher ID Card QR to check in staff."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Teacher</th>
+                  <th className="px-4 py-3 font-medium">Employee ID</th>
+                  <th className="px-4 py-3 font-medium">Designation</th>
+                  <th className="px-4 py-3 font-medium">Check-in</th>
+                  <th className="px-4 py-3 font-medium">Check-out</th>
+                  <th className="px-4 py-3 font-medium">Working hours</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {rows.map((r) => (
+                  <tr key={r.id} className="hover:bg-muted/20">
+                    <td className="px-4 py-3 font-medium">{r.teacher?.fullName || "—"}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{r.teacher?.employeeNo || "—"}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{r.teacher?.designation || "—"}</td>
+                    <td className="px-4 py-3">{fmtTime(r.checkInAt)}</td>
+                    <td className="px-4 py-3">{fmtTime(r.checkOutAt)}</td>
+                    <td className="px-4 py-3">{formatWorkingHours(r.workingMinutes)}</td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={teacherAttendanceStatusLabel(r)} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </Card>
     </div>

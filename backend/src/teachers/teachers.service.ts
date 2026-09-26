@@ -51,6 +51,7 @@ export class TeachersService {
         { fullName: { contains: query.search, mode: 'insensitive' } },
         { email: { contains: query.search, mode: 'insensitive' } },
         { phone: { contains: query.search, mode: 'insensitive' } },
+        { employeeNo: { contains: query.search, mode: 'insensitive' } },
       ];
     }
 
@@ -86,6 +87,9 @@ export class TeachersService {
       }
     }
 
+    const employeeNo = this.normalizeOptionalText(dto.employeeNo);
+    await this.assertEmployeeNoAvailable(schoolId, employeeNo);
+
     const teacher = await this.prisma.teacher.create({
       data: {
         schoolId,
@@ -93,6 +97,9 @@ export class TeachersService {
         phone: dto.phone,
         email: dto.email,
         address: dto.address,
+        photoUrl: this.normalizeOptionalText(dto.photoUrl),
+        employeeNo,
+        designation: this.normalizeOptionalText(dto.designation),
         salary: dto.salary,
         status: dto.status ?? 'ACTIVE',
         ...(dto.userId ? { userId: dto.userId } : {}),
@@ -119,6 +126,12 @@ export class TeachersService {
       }
     }
 
+    const employeeNo =
+      dto.employeeNo !== undefined ? this.normalizeOptionalText(dto.employeeNo) : undefined;
+    if (employeeNo !== undefined) {
+      await this.assertEmployeeNoAvailable(teacher.schoolId, employeeNo, id);
+    }
+
     return this.prisma.teacher.update({
       where: { id },
       data: {
@@ -126,6 +139,13 @@ export class TeachersService {
         ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
         ...(dto.email !== undefined ? { email: dto.email } : {}),
         ...(dto.address !== undefined ? { address: dto.address } : {}),
+        ...(dto.photoUrl !== undefined
+          ? { photoUrl: this.normalizeOptionalText(dto.photoUrl) }
+          : {}),
+        ...(employeeNo !== undefined ? { employeeNo } : {}),
+        ...(dto.designation !== undefined
+          ? { designation: this.normalizeOptionalText(dto.designation) }
+          : {}),
         ...(dto.salary !== undefined ? { salary: dto.salary } : {}),
         ...(dto.status !== undefined ? { status: dto.status } : {}),
         ...(dto.userId !== undefined ? { userId: dto.userId } : {}),
@@ -326,6 +346,31 @@ export class TeachersService {
       throw new NotFoundException('Teacher not found');
     }
     return teacher;
+  }
+
+  private normalizeOptionalText(value?: string | null): string | null {
+    if (value == null) return null;
+    const trimmed = String(value).trim();
+    return trimmed.length ? trimmed : null;
+  }
+
+  private async assertEmployeeNoAvailable(
+    schoolId: string,
+    employeeNo: string | null,
+    excludeTeacherId?: string,
+  ) {
+    if (!employeeNo) return;
+    const existing = await this.prisma.teacher.findFirst({
+      where: {
+        schoolId,
+        employeeNo,
+        ...(excludeTeacherId ? { NOT: { id: excludeTeacherId } } : {}),
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new BadRequestException('Employee number already exists in this school');
+    }
   }
 
   private async assertUserBelongsToSchool(userId: string, schoolId: string) {

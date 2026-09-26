@@ -7,8 +7,11 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser } from '../common/types/current-user.type';
 import { PreviewIdCardsDto } from './dto/preview-id-cards.dto';
+import { PreviewTeacherIdCardsDto } from './dto/preview-teacher-id-cards.dto';
 import { IdCardsQueryDto } from './dto/id-cards-query.dto';
+import { TeacherIdCardsQueryDto } from './dto/teacher-id-cards-query.dto';
 import { IdCardsService } from './id-cards.service';
+import { TeacherIdCardsService } from './teacher-id-cards.service';
 
 const VIEW_ROLES = [
   UserRole.SUPER_ADMIN,
@@ -29,7 +32,10 @@ const MANAGE_ROLES = [
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('id-cards')
 export class IdCardsController {
-  constructor(private readonly idCardsService: IdCardsService) {}
+  constructor(
+    private readonly idCardsService: IdCardsService,
+    private readonly teacherIdCardsService: TeacherIdCardsService,
+  ) {}
 
   @ApiOperation({ summary: 'List built-in ID card templates' })
   @Roles(...VIEW_ROLES)
@@ -62,6 +68,97 @@ export class IdCardsController {
   bulkGenerate(@Body() dto: PreviewIdCardsDto, @CurrentUserDecorator() user: CurrentUser) {
     return this.idCardsService.bulkGenerate(dto, user);
   }
+
+  // ── Teacher ID cards (must be registered before student/:studentId to avoid route clashes) ──
+
+  @ApiOperation({ summary: 'List issued active teacher ID cards for the school' })
+  @Roles(...VIEW_ROLES)
+  @Get('teachers')
+  findAllTeachers(
+    @CurrentUserDecorator() user: CurrentUser,
+    @Query() query: TeacherIdCardsQueryDto,
+  ) {
+    return this.teacherIdCardsService.findAll(user, query);
+  }
+
+  @ApiOperation({
+    summary: 'Read-only preview of teacher ID card layouts (does not mint QR tokens)',
+  })
+  @Roles(...VIEW_ROLES)
+  @Post('teachers/preview')
+  previewTeachers(
+    @Body() dto: PreviewTeacherIdCardsDto,
+    @CurrentUserDecorator() user: CurrentUser,
+  ) {
+    return this.teacherIdCardsService.preview(dto, user);
+  }
+
+  @ApiOperation({ summary: 'Bulk-generate active teacher ID cards / QR tokens (manage only)' })
+  @Roles(...MANAGE_ROLES)
+  @Post('teachers/bulk-generate')
+  bulkGenerateTeachers(
+    @Body() dto: PreviewTeacherIdCardsDto,
+    @CurrentUserDecorator() user: CurrentUser,
+  ) {
+    return this.teacherIdCardsService.bulkGenerate(dto, user);
+  }
+
+  @ApiOperation({ summary: 'Resolve an active teacher ID card from a QR token (school-scoped)' })
+  @Roles(...VIEW_ROLES)
+  @Post('teachers/resolve')
+  resolveTeacherCard(
+    @Body() body: { token: string; schoolId?: string },
+    @CurrentUserDecorator() user: CurrentUser,
+  ) {
+    const schoolId = this.teacherIdCardsService.requireSchoolId(user, body.schoolId);
+    return this.teacherIdCardsService.resolveActiveByToken(body.token, schoolId);
+  }
+
+  @ApiOperation({ summary: 'Get the current ID card for a teacher' })
+  @Roles(...VIEW_ROLES)
+  @Get('teacher/:teacherId')
+  getForTeacher(
+    @Param('teacherId') teacherId: string,
+    @CurrentUserDecorator() user: CurrentUser,
+    @Query('schoolId') schoolId?: string,
+  ) {
+    return this.teacherIdCardsService.getForTeacher(teacherId, user, schoolId);
+  }
+
+  @ApiOperation({ summary: 'Issue an ID card if the teacher does not already have an active one' })
+  @Roles(...MANAGE_ROLES)
+  @Post('teacher/:teacherId')
+  issueTeacher(
+    @Param('teacherId') teacherId: string,
+    @CurrentUserDecorator() user: CurrentUser,
+    @Query('schoolId') schoolId?: string,
+  ) {
+    return this.teacherIdCardsService.issue(teacherId, user, schoolId);
+  }
+
+  @ApiOperation({ summary: 'Revoke the current teacher card and issue a new QR token' })
+  @Roles(...MANAGE_ROLES)
+  @Post('teacher/:teacherId/reissue')
+  reissueTeacher(
+    @Param('teacherId') teacherId: string,
+    @CurrentUserDecorator() user: CurrentUser,
+    @Query('schoolId') schoolId?: string,
+  ) {
+    return this.teacherIdCardsService.reissue(teacherId, user, schoolId);
+  }
+
+  @ApiOperation({ summary: 'Revoke the active teacher ID card without issuing a replacement' })
+  @Roles(...MANAGE_ROLES)
+  @Post('teacher/:teacherId/revoke')
+  revokeTeacher(
+    @Param('teacherId') teacherId: string,
+    @CurrentUserDecorator() user: CurrentUser,
+    @Query('schoolId') schoolId?: string,
+  ) {
+    return this.teacherIdCardsService.revoke(teacherId, user, schoolId);
+  }
+
+  // ── Student ID cards ──
 
   @ApiOperation({ summary: 'Get the current ID card for a student' })
   @Roles(...VIEW_ROLES)

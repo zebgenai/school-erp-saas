@@ -6,7 +6,12 @@ import { toastError, toastSuccess } from "@/lib/errors";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, EmptyState, PageHeader, Skeleton } from "@/components/ui-kit";
 import { Button, Field, Select, TextInput } from "@/components/form";
-import { IdCardPair, type IdCardPreviewModel } from "@/components/id-cards/IdCardPreview";
+import {
+  IdCardPair,
+  TeacherIdCardPair,
+  type IdCardPreviewModel,
+  type TeacherIdCardPreviewModel,
+} from "@/components/id-cards/IdCardPreview";
 import { QrAttendanceScanner } from "@/components/id-cards/QrScanner";
 import { useApiQuery, asList } from "@/lib/hooks";
 import { api } from "@/lib/api";
@@ -15,10 +20,12 @@ import { usePermissions } from "@/lib/permissions";
 import {
   ID_CARD_TEMPLATES,
   activeStudentsOnly,
+  activeTeachersOnly,
   hasTruthySelection,
   selectedStudentIds,
   studentsInSelectionScope,
   studentsMissingPhotos,
+  teachersMissingPhotos,
   type IdCardTemplateId,
 } from "@/lib/id-card-data";
 import { pdfApi } from "@/lib/pdfUtils";
@@ -30,6 +37,7 @@ export const Route = createFileRoute("/id-cards")({
 });
 
 type Tab = "single" | "bulk" | "templates" | "scanner";
+type Audience = "students" | "teachers";
 
 function toPreviewModel(row: any): IdCardPreviewModel {
   return {
@@ -42,17 +50,29 @@ function toPreviewModel(row: any): IdCardPreviewModel {
   };
 }
 
+function toTeacherPreviewModel(row: any): TeacherIdCardPreviewModel {
+  return {
+    template: row.template,
+    qrSvg: row.qrSvg,
+    qrToken: row.qrToken,
+    teacher: row.teacher,
+    school: row.school,
+    card: row.card,
+  };
+}
+
 function IdCardsPage() {
   const { can } = usePermissions();
   const { user } = useAuth();
-  // QR attendance is school-staff only — SUPER_ADMIN has no school context for scans.
   const canMark =
     can("attendance.mark") &&
     Boolean(user?.schoolId) &&
     user?.role !== "SUPER_ADMIN" &&
     user?.role !== "PLATFORM_MANAGER";
-  const canManage = can("students.edit");
+  const canManageStudents = can("students.edit");
+  const canManageTeachers = can("teachers.edit");
   const [tab, setTab] = useState<Tab>("single");
+  const [audience, setAudience] = useState<Audience>("students");
   const school = useApiQuery<any>("/schools/mine");
   const defaultTemplate = ((school.data as any)?.idCardTemplate || "CLASSIC") as IdCardTemplateId;
   const [template, setTemplate] = useState<IdCardTemplateId>(defaultTemplate);
@@ -61,12 +81,36 @@ function IdCardsPage() {
     { id: "single", label: "Single card", icon: IdCard },
     { id: "bulk", label: "Bulk generate", icon: CreditCard },
     { id: "templates", label: "Templates", icon: CreditCard },
-    { id: "scanner", label: "Scanner", icon: QrCode, hidden: !canMark },
+    { id: "scanner", label: "Scanner", icon: QrCode, hidden: !canMark || audience === "teachers" },
   ];
 
   return (
     <div>
-      <PageHeader title="ID Cards" description="Print student ID cards with a secure QR code for attendance." />
+      <PageHeader
+        title="ID Cards"
+        description={
+          audience === "teachers"
+            ? "Issue teacher staff ID cards with a secure QR token for future attendance."
+            : "Print student ID cards with a secure QR code for attendance."
+        }
+      />
+      <div className="flex flex-wrap gap-2 mb-4">
+        {(["students", "teachers"] as Audience[]).map((a) => (
+          <button
+            key={a}
+            onClick={() => {
+              setAudience(a);
+              if (a === "teachers" && tab === "scanner") setTab("single");
+            }}
+            className={cn(
+              "h-8 px-3 rounded-lg text-sm font-medium border",
+              audience === a ? "bg-muted border-primary/40" : "bg-card hover:bg-muted/60",
+            )}
+          >
+            {a === "students" ? "Students" : "Teachers"}
+          </button>
+        ))}
+      </div>
       <div className="flex flex-wrap gap-2 mb-6">
         {tabs.filter((t) => !t.hidden).map((t) => (
           <button
@@ -81,8 +125,18 @@ function IdCardsPage() {
           </button>
         ))}
       </div>
-      {tab === "single" && <SingleCard template={template} setTemplate={setTemplate} canManage={canManage} />}
-      {tab === "bulk" && <BulkCards template={template} setTemplate={setTemplate} canManage={canManage} />}
+      {tab === "single" && audience === "students" && (
+        <SingleCard template={template} setTemplate={setTemplate} canManage={canManageStudents} />
+      )}
+      {tab === "single" && audience === "teachers" && (
+        <SingleTeacherCard template={template} setTemplate={setTemplate} canManage={canManageTeachers} />
+      )}
+      {tab === "bulk" && audience === "students" && (
+        <BulkCards template={template} setTemplate={setTemplate} canManage={canManageStudents} />
+      )}
+      {tab === "bulk" && audience === "teachers" && (
+        <BulkTeacherCards template={template} setTemplate={setTemplate} canManage={canManageTeachers} />
+      )}
       {tab === "templates" && (
         <TemplatesTab
           current={((school.data as any)?.idCardTemplate || template) as IdCardTemplateId}
@@ -91,11 +145,11 @@ function IdCardsPage() {
           onSaved={() => school.refetch()}
         />
       )}
-      {tab === "scanner" && canMark && (
+      {tab === "scanner" && canMark && audience === "students" && (
         <Card>
           <h3 className="font-semibold mb-1">QR attendance scanner</h3>
           <p className="text-sm text-muted-foreground mb-4">Scan the back of a student ID card. Manual attendance is unchanged.</p>
-          <QrAttendanceScanner />
+          <QrAttendanceScanner mode="student" />
         </Card>
       )}
     </div>
@@ -528,6 +582,341 @@ function BulkCards({
                   <p className="text-center text-xs text-muted-foreground">Not issued — QR will appear after Generate</p>
                 )}
                 <IdCardPair model={toPreviewModel({ ...row, template })} template={template} />
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function SingleTeacherCard({
+  template, setTemplate, canManage,
+}: { template: IdCardTemplateId; setTemplate: (v: IdCardTemplateId) => void; canManage: boolean }) {
+  const [search, setSearch] = useState("");
+  const [teacherId, setTeacherId] = useState("");
+  const [busy, setBusy] = useState("");
+  const teachers = useApiQuery<any>("/teachers", { search: search || undefined, status: "ACTIVE", limit: 30 }, { enabled: search.length >= 1 });
+  const card = useApiQuery<any>(teacherId ? `/id-cards/teacher/${teacherId}` : null);
+  const list = asList<any>(teachers.data);
+
+  const issue = async (path: "issue" | "reissue" | "revoke") => {
+    if (!teacherId) return;
+    setBusy(path);
+    try {
+      if (path === "revoke") await api.post(`/id-cards/teacher/${teacherId}/revoke`);
+      else if (path === "reissue") await api.post(`/id-cards/teacher/${teacherId}/reissue`);
+      else await api.post(`/id-cards/teacher/${teacherId}`);
+      toastSuccess(path === "revoke" ? "Card revoked" : path === "reissue" ? "Card reissued" : "Card generated");
+      card.refetch();
+    } catch (e: any) { toastError(e); }
+    finally { setBusy(""); }
+  };
+
+  const download = async () => {
+    if (!teacherId) return;
+    try {
+      await pdfApi.teacherIdCards({ teacherIds: [teacherId], template });
+    } catch (e: any) { toastError(e); }
+  };
+
+  const print = async () => {
+    if (!teacherId) return;
+    try {
+      await pdfApi.printTeacherIdCards({ teacherIds: [teacherId], template });
+    } catch (e: any) { toastError(e); }
+  };
+
+  const model = card.data?.card ? toTeacherPreviewModel({ ...card.data, template }) : null;
+
+  return (
+    <div className="grid lg:grid-cols-3 gap-6">
+      <Card className="space-y-4">
+        <Field label="Search teacher">
+          <div className="relative">
+            <Search className="size-4 absolute left-3 top-3.5 text-muted-foreground" />
+            <TextInput className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name or employee no" />
+          </div>
+        </Field>
+        <div className="max-h-72 overflow-auto rounded-xl border divide-y">
+          {list.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTeacherId(t.id)}
+              className={cn("w-full text-left px-3 py-2 text-sm hover:bg-muted/50", teacherId === t.id && "bg-muted")}
+            >
+              <div className="font-medium">{t.fullName}</div>
+              <div className="text-xs text-muted-foreground">{t.employeeNo || "No emp. ID"} · {t.designation || "Teacher"}</div>
+            </button>
+          ))}
+          {search && list.length === 0 && !teachers.loading && (
+            <div className="px-3 py-6 text-sm text-muted-foreground">No active teachers match that search.</div>
+          )}
+        </div>
+        <TemplateSelect value={template} onChange={setTemplate} />
+      </Card>
+      <Card className="lg:col-span-2">
+        {!teacherId && <EmptyState icon={IdCard} title="Select a teacher" description="Search and choose a teacher to preview their staff ID card." />}
+        {teacherId && card.loading && <Skeleton className="h-56" />}
+        {teacherId && model && (
+          <div className="space-y-4">
+            <TeacherIdCardPair model={model} template={template} />
+            <div className="flex flex-wrap gap-2 justify-center">
+              <Button variant="outline" onClick={download}><Download className="size-4" /> PDF</Button>
+              <Button variant="outline" onClick={print}><Printer className="size-4" /> Print</Button>
+              {canManage && !card.data?.card && <Button onClick={() => issue("issue")} loading={busy === "issue"}>Generate</Button>}
+              {canManage && card.data?.card && (
+                <>
+                  <Button variant="outline" onClick={() => issue("reissue")} loading={busy === "reissue"}>Reissue</Button>
+                  <Button variant="destructive" onClick={() => issue("revoke")} loading={busy === "revoke"}>Revoke</Button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+        {teacherId && !card.loading && card.data && !card.data.card && (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground text-center">No active card yet. Generate one to print a teacher QR.</p>
+            {canManage && <div className="flex justify-center"><Button onClick={() => issue("issue")} loading={busy === "issue"}>Generate card</Button></div>}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function BulkTeacherCards({
+  template, setTemplate, canManage,
+}: { template: IdCardTemplateId; setTemplate: (v: IdCardTemplateId) => void; canManage: boolean }) {
+  const [scope, setScope] = useState<"selected" | "allActive">("selected");
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [preview, setPreview] = useState<any | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [photoChoice, setPhotoChoice] = useState<"ask" | "continue" | "review">("ask");
+  const pendingAction = useRef<"preview" | "generate" | null>(null);
+  const [lastResult, setLastResult] = useState<{
+    generated: number;
+    alreadyHadActiveCard: number;
+    skippedInactive: number;
+    failed: number;
+  } | null>(null);
+
+  const teachersQ = useApiQuery<any>(scope === "selected" ? "/teachers" : null, { status: "ACTIVE", limit: 200 });
+  const teacherList = useMemo(() => activeTeachersOnly(asList<any>(teachersQ.data)), [teachersQ.data]);
+  const selectedIds = selectedStudentIds(selected);
+  const scopeTeachers = studentsInSelectionScope(teacherList, selected);
+  const missing = teachersMissingPhotos(scopeTeachers);
+  const pendingCount = preview?.pendingCount ?? preview?.cards?.filter((c: any) => !c.cardExists)?.length ?? 0;
+  const canRun = scope === "allActive" || hasTruthySelection(selected);
+
+  const toggleAll = (on: boolean) => {
+    const next: Record<string, boolean> = {};
+    if (on) teacherList.forEach((t) => { next[t.id] = true; });
+    setSelected(next);
+  };
+
+  const selectionBody = (extra: Record<string, unknown> = {}) => {
+    const body: Record<string, unknown> = { template, ...extra };
+    if (scope === "allActive") {
+      body.allActive = true;
+      return body;
+    }
+    body.teacherIds = selectedIds;
+    return body;
+  };
+
+  const executePreview = async () => {
+    setLoading(true);
+    try {
+      const res = await api.post("/id-cards/teachers/preview", selectionBody());
+      setPreview(res);
+      setLastResult(null);
+      toastSuccess(`${res.total} teacher layout${res.total === 1 ? "" : "s"} ready`);
+    } catch (e: any) {
+      toastError(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const executeGenerate = async () => {
+    if (!canManage) return;
+    setGenerating(true);
+    try {
+      let cursor: string | undefined;
+      let generated = 0;
+      let alreadyHadActiveCard = 0;
+      let skippedInactive = 0;
+      let failed = 0;
+      let lastCards: any[] = [];
+      let guard = 0;
+      do {
+        const res: any = await api.post(
+          "/id-cards/teachers/bulk-generate",
+          selectionBody(cursor ? { cursor } : {}),
+        );
+        generated += res.generated ?? 0;
+        alreadyHadActiveCard += res.alreadyHadActiveCard ?? 0;
+        skippedInactive += res.skippedInactive ?? 0;
+        failed += res.failed ?? 0;
+        if (Array.isArray(res.cards)) lastCards = res.cards;
+        cursor = res.nextCursor || undefined;
+        guard += 1;
+      } while (cursor && guard < 500);
+
+      setLastResult({ generated, alreadyHadActiveCard, skippedInactive, failed });
+      setPreview({
+        cards: lastCards,
+        total: lastCards.length,
+        pendingCount: 0,
+        missingPhotos: [],
+      });
+      toastSuccess(
+        `Generated ${generated} · already had card ${alreadyHadActiveCard} · skipped ${skippedInactive} · failed ${failed}`,
+      );
+    } catch (e: any) {
+      toastError(e);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const runPreview = async () => {
+    if (!canRun) return toast.error("Select teachers or All active teachers");
+    if (scope === "selected" && missing.length && photoChoice === "ask") {
+      pendingAction.current = "preview";
+      setPhotoChoice("review");
+      return;
+    }
+    if (photoChoice === "review") return;
+    pendingAction.current = null;
+    await executePreview();
+  };
+
+  const runGenerate = async () => {
+    if (!canManage) return;
+    if (!canRun) return toast.error("Select teachers or All active teachers");
+    if (scope === "selected" && missing.length && photoChoice === "ask") {
+      pendingAction.current = "generate";
+      setPhotoChoice("review");
+      return;
+    }
+    if (photoChoice === "review") return;
+    pendingAction.current = null;
+    await executeGenerate();
+  };
+
+  const continueAnyway = async () => {
+    const action = pendingAction.current;
+    pendingAction.current = null;
+    setPhotoChoice("continue");
+    if (action === "preview") await executePreview();
+    else if (action === "generate") await executeGenerate();
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Field label="Scope">
+          <Select
+            value={scope}
+            onChange={(e) => {
+              const next = e.target.value as "selected" | "allActive";
+              setScope(next);
+              setSelected({});
+              setPreview(null);
+              setLastResult(null);
+              setPhotoChoice("ask");
+              pendingAction.current = null;
+            }}
+          >
+            <option value="selected">Selected teachers</option>
+            <option value="allActive">All active teachers</option>
+          </Select>
+        </Field>
+        <TemplateSelect value={template} onChange={setTemplate} />
+        <div className="flex items-end gap-2 lg:col-span-2">
+          <Button className="w-full" variant="outline" onClick={runPreview} loading={loading} disabled={!canRun}>Preview</Button>
+          {canManage && (
+            <Button className="w-full" onClick={runGenerate} loading={generating} disabled={!canRun}>Generate</Button>
+          )}
+        </div>
+      </Card>
+
+      {scope === "selected" && (
+        <Card>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-sm">{teacherList.length} active teachers</h3>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => toggleAll(true)}>Select all</Button>
+              <Button size="sm" variant="ghost" onClick={() => toggleAll(false)}>Clear</Button>
+            </div>
+          </div>
+          <div className="max-h-64 overflow-auto divide-y rounded-xl border">
+            {teacherList.map((t) => (
+              <label key={t.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={!!selected[t.id]}
+                  onChange={(e) => setSelected((prev) => ({ ...prev, [t.id]: e.target.checked }))}
+                />
+                <span className="font-medium">{t.fullName}</span>
+                <span className="text-muted-foreground text-xs">{t.employeeNo || "—"}</span>
+                {!t.photoUrl && <span className="ml-auto text-[11px] text-amber-700">No photo</span>}
+              </label>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {photoChoice === "review" && missing.length > 0 && (
+        <Card className="border-amber-200 bg-amber-50/50">
+          <p className="font-medium text-sm">{missing.length} teacher{missing.length === 1 ? "" : "s"} have no photo.</p>
+          <div className="flex gap-2 mt-3">
+            <Button size="sm" variant="outline" onClick={continueAnyway}>Continue anyway</Button>
+            <Button size="sm" variant="ghost" onClick={() => { pendingAction.current = null; setPhotoChoice("ask"); }}>Cancel</Button>
+          </div>
+        </Card>
+      )}
+
+      {lastResult && (
+        <Card>
+          <h3 className="font-semibold text-sm mb-2">Generation results</h3>
+          <ul className="text-sm grid sm:grid-cols-2 gap-1 text-muted-foreground">
+            <li>Generated: <span className="text-foreground font-medium">{lastResult.generated}</span></li>
+            <li>Already had active card: <span className="text-foreground font-medium">{lastResult.alreadyHadActiveCard}</span></li>
+            <li>Skipped inactive: <span className="text-foreground font-medium">{lastResult.skippedInactive}</span></li>
+            <li>Failed: <span className="text-foreground font-medium">{lastResult.failed}</span></li>
+          </ul>
+        </Card>
+      )}
+
+      {preview?.cards?.length > 0 && (
+        <Card>
+          <div className="flex flex-wrap justify-between gap-2 mb-4">
+            <div>
+              <h3 className="font-semibold">{preview.total} teacher cards</h3>
+              {pendingCount > 0 && (
+                <p className="text-xs text-muted-foreground">{pendingCount} not issued yet — Generate to mint QR tokens</p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              {canManage && pendingCount > 0 && (
+                <Button onClick={runGenerate} loading={generating}>Generate QR cards</Button>
+              )}
+              <Button variant="outline" onClick={() => pdfApi.teacherIdCards(selectionBody()).catch((e) => toastError(e))}><Download className="size-4" /> PDF</Button>
+              <Button variant="outline" onClick={() => pdfApi.printTeacherIdCards(selectionBody()).catch((e) => toastError(e))}><Printer className="size-4" /> Print</Button>
+            </div>
+          </div>
+          <div className="space-y-8">
+            {preview.cards.map((row: any) => (
+              <div key={row.card?.id || row.teacher?.id} className="space-y-2">
+                {!row.cardExists && (
+                  <p className="text-center text-xs text-muted-foreground">Not issued — QR will appear after Generate</p>
+                )}
+                <TeacherIdCardPair model={toTeacherPreviewModel({ ...row, template })} template={template} />
               </div>
             ))}
           </div>

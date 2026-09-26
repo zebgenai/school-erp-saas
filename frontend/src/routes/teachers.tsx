@@ -1,14 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
-import { Plus, Search, Edit2, Trash2, GraduationCap, Eye, Phone, Mail, BookOpen } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { Plus, Search, Edit2, Trash2, GraduationCap, Eye, Phone, Mail, BookOpen, Upload, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, PageHeader, Skeleton, EmptyState, ErrorState, StatusBadge } from "@/components/ui-kit";
 import { Button, Field, Select, TextInput, Textarea } from "@/components/form";
 import { Modal, ConfirmDialog } from "@/components/Modal";
 import { useApiQuery, asList } from "@/lib/hooks";
-import { api } from "@/lib/api";
+import { api, authorizedFetch, getApiBaseUrl, resolveFileUrl } from "@/lib/api";
 import { usePermissions } from "@/lib/permissions";
+import { toastError, toastSuccess } from "@/lib/errors";
+import { TeacherIdCardPair, type TeacherIdCardPreviewModel } from "@/components/id-cards/IdCardPreview";
+import { pdfApi } from "@/lib/pdfUtils";
 
 export const Route = createFileRoute("/teachers")({
   head: () => ({ meta: [{ title: "Teachers — School ERP" }] }),
@@ -16,7 +19,7 @@ export const Route = createFileRoute("/teachers")({
 });
 
 const empty = {
-  fullName: "", phone: "", email: "", address: "", salary: 0, status: "ACTIVE",
+  fullName: "", phone: "", email: "", address: "", employeeNo: "", designation: "", salary: 0, status: "ACTIVE",
 };
 
 function Teachers() {
@@ -47,7 +50,7 @@ function Teachers() {
   const save = async (form: any) => {
     setSaving(true);
     try {
-      const allowed = ["fullName", "phone", "email", "address", "salary", "status"];
+      const allowed = ["fullName", "phone", "email", "address", "employeeNo", "designation", "salary", "status", "photoUrl"];
       const payload: Record<string, any> = {};
       for (const key of allowed) {
         if (form[key] !== undefined && form[key] !== "") payload[key] = form[key];
@@ -57,7 +60,14 @@ function Teachers() {
         await api.patch(`/teachers/${modal.data.id}`, payload);
         toast.success("Teacher updated");
       } else {
-        await api.post("/teachers", payload);
+        const created: any = await api.post("/teachers", payload);
+        if (form._pendingPhoto && created?.id) {
+          try {
+            await uploadTeacherPhoto(created.id, form._pendingPhoto as File);
+          } catch (e: any) {
+            toast.error(e.message || "Teacher saved, but photo upload failed");
+          }
+        }
         toast.success("Teacher added");
       }
       setModal({ open: false, data: null });
@@ -236,33 +246,43 @@ function Teachers() {
       {/* View Modal */}
       <Modal open={!!view} onClose={() => setView(null)} title={view?.fullName || "Teacher"} size="md">
         {view && (
-          <div className="grid sm:grid-cols-2 gap-4 text-sm">
-            <Info label="Full Name" value={view.fullName} />
-            <Info label="Phone" value={view.phone} />
-            <Info label="Email" value={view.email} />
-            <Info label="Monthly Salary" value={view.salary ? `PKR ${Number(view.salary).toLocaleString()}` : null} />
-            <Info label="Status" value={<StatusBadge status={view.status} />} />
-            <div className="sm:col-span-2"><Info label="Address" value={view.address} /></div>
-            <div className="sm:col-span-2 border-t pt-3">
+          <div className="space-y-4 text-sm">
+            <TeacherPhoto
+              teacher={view}
+              canEdit={canEdit}
+              onUpdated={(photoUrl) => { setView({ ...view, photoUrl }); list.refetch(); }}
+            />
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Info label="Full Name" value={view.fullName} />
+              <Info label="Employee No" value={view.employeeNo} />
+              <Info label="Designation" value={view.designation} />
+              <Info label="Phone" value={view.phone} />
+              <Info label="Email" value={view.email} />
+              <Info label="Monthly Salary" value={view.salary ? `PKR ${Number(view.salary).toLocaleString()}` : null} />
+              <Info label="Status" value={<StatusBadge status={view.status} />} />
+              <div className="sm:col-span-2"><Info label="Address" value={view.address} /></div>
+              <div className="sm:col-span-2 border-t pt-3">
+                <Info
+                  label="Subjects Taught"
+                  value={view.subjectsTaught?.length
+                    ? view.subjectsTaught
+                        .map((s: any) => [s.class?.name, s.section?.name, s.name].filter(Boolean).join(" · "))
+                        .join(", ")
+                    : null}
+                />
+              </div>
               <Info
-                label="Subjects Taught"
-                value={view.subjectsTaught?.length
-                  ? view.subjectsTaught
-                      .map((s: any) => [s.class?.name, s.section?.name, s.name].filter(Boolean).join(" · "))
-                      .join(", ")
+                label="Class Teacher Of"
+                value={view.classesLed?.length ? view.classesLed.map((c: any) => c.name).join(", ") : null}
+              />
+              <Info
+                label="Section Teacher Of"
+                value={view.sectionsLed?.length
+                  ? view.sectionsLed.map((s: any) => [s.class?.name, s.name].filter(Boolean).join(" · ")).join(", ")
                   : null}
               />
             </div>
-            <Info
-              label="Class Teacher Of"
-              value={view.classesLed?.length ? view.classesLed.map((c: any) => c.name).join(", ") : null}
-            />
-            <Info
-              label="Section Teacher Of"
-              value={view.sectionsLed?.length
-                ? view.sectionsLed.map((s: any) => [s.class?.name, s.name].filter(Boolean).join(" · ")).join(", ")
-                : null}
-            />
+            <TeacherIdCardPanel teacher={view} canManage={canEdit} />
           </div>
         )}
       </Modal>
@@ -294,16 +314,30 @@ function TeacherForm({
   initial: any; onClose: () => void; onSave: (f: any) => void; saving: boolean; isEdit: boolean;
 }) {
   const [f, setF] = useState({ ...empty, ...(initial || {}) });
+  const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
   const set = (k: string, v: any) => setF((p: typeof empty) => ({ ...p, [k]: v }));
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!f.fullName?.trim()) return toast.error("Full name is required");
     if (f.email?.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) {
       return toast.error("Enter a valid email address");
     }
-    onSave(f);
+    if (isEdit && pendingPhoto && initial?.id) {
+      try {
+        const photoUrl = await uploadTeacherPhoto(initial.id, pendingPhoto);
+        onSave({ ...f, photoUrl });
+      } catch (err: any) {
+        toast.error(err.message || "Photo upload failed");
+      }
+      return;
+    }
+    onSave({ ...f, _pendingPhoto: pendingPhoto });
   };
+
+  const displayPhoto = previewUrl || (f.photoUrl ? resolveFileUrl(f.photoUrl) : "");
 
   return (
     <Modal
@@ -321,11 +355,52 @@ function TeacherForm({
       }
     >
       <form onSubmit={submit} className="grid sm:grid-cols-2 gap-4">
+        <div className="sm:col-span-2 flex items-center gap-4">
+          {displayPhoto ? (
+            <img src={displayPhoto} alt="" className="size-16 rounded-xl object-cover border" />
+          ) : (
+            <div className="size-16 rounded-xl border border-dashed grid place-items-center text-muted-foreground">
+              <ImageIcon className="size-5" />
+            </div>
+          )}
+          <div>
+            <Button type="button" size="sm" variant="outline" onClick={() => fileRef.current?.click()}>
+              <Upload className="w-3.5 h-3.5" /> {pendingPhoto || f.photoUrl ? "Change photo" : "Choose photo"}
+            </Button>
+            <p className="text-xs text-muted-foreground mt-1">Optional · JPG, PNG, WebP</p>
+            <input
+              ref={fileRef}
+              type="file"
+              className="hidden"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setPendingPhoto(file);
+                setPreviewUrl(URL.createObjectURL(file));
+              }}
+            />
+          </div>
+        </div>
         <Field label="Full Name *">
           <TextInput
             value={f.fullName}
             onChange={(e) => set("fullName", e.target.value)}
             placeholder="e.g. Ahmed Khan"
+          />
+        </Field>
+        <Field label="Employee No">
+          <TextInput
+            value={f.employeeNo}
+            onChange={(e) => set("employeeNo", e.target.value)}
+            placeholder="e.g. EMP-001"
+          />
+        </Field>
+        <Field label="Designation">
+          <TextInput
+            value={f.designation}
+            onChange={(e) => set("designation", e.target.value)}
+            placeholder="e.g. Senior Teacher"
           />
         </Field>
         <Field label="Phone">
@@ -370,6 +445,127 @@ function TeacherForm({
         </div>
       </form>
     </Modal>
+  );
+}
+
+async function uploadTeacherPhoto(teacherId: string, file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await authorizedFetch(
+    `${getApiBaseUrl()}/uploads/teacher/${teacherId}/photo`,
+    { method: "POST", body: formData },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.message || "Upload failed");
+  }
+  const data = await res.json();
+  return data.photoUrl as string;
+}
+
+function TeacherPhoto({
+  teacher, canEdit, onUpdated,
+}: { teacher: any; canEdit: boolean; onUpdated: (photoUrl: string) => void }) {
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const upload = async (file: File) => {
+    setUploading(true);
+    try {
+      const photoUrl = await uploadTeacherPhoto(teacher.id, file);
+      toastSuccess("Teacher photo updated");
+      onUpdated(photoUrl);
+    } catch (e: any) {
+      toastError(e, "Photo upload failed");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-4">
+      {teacher.photoUrl ? (
+        <img src={resolveFileUrl(teacher.photoUrl)} alt={teacher.fullName}
+          className="size-20 rounded-xl object-cover border" />
+      ) : (
+        <div className="size-20 rounded-xl border border-dashed grid place-items-center text-muted-foreground">
+          <ImageIcon className="size-6" />
+        </div>
+      )}
+      {canEdit && (
+        <div>
+          <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} loading={uploading}>
+            <Upload className="w-3.5 h-3.5" /> {teacher.photoUrl ? "Replace photo" : "Upload photo"}
+          </Button>
+          <p className="text-xs text-muted-foreground mt-1.5">JPG, PNG or WebP up to 2 MB.</p>
+          <input ref={fileRef} type="file" className="hidden" accept="image/jpeg,image/png,image/webp"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TeacherIdCardPanel({ teacher, canManage }: { teacher: any; canManage: boolean }) {
+  const card = useApiQuery<any>(`/id-cards/teacher/${teacher.id}`);
+  const [busy, setBusy] = useState("");
+
+  const issue = async (path: "issue" | "reissue" | "revoke") => {
+    setBusy(path);
+    try {
+      if (path === "revoke") await api.post(`/id-cards/teacher/${teacher.id}/revoke`);
+      else if (path === "reissue") await api.post(`/id-cards/teacher/${teacher.id}/reissue`);
+      else await api.post(`/id-cards/teacher/${teacher.id}`);
+      toastSuccess(path === "revoke" ? "Card revoked" : path === "reissue" ? "Card reissued" : "Card generated");
+      card.refetch();
+    } catch (e: any) {
+      toastError(e);
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const model: TeacherIdCardPreviewModel | null = card.data?.card
+    ? {
+        template: card.data.template,
+        qrSvg: card.data.qrSvg,
+        qrToken: card.data.qrToken,
+        teacher: card.data.teacher,
+        school: card.data.school,
+        card: card.data.card,
+      }
+    : null;
+
+  return (
+    <div className="border-t pt-4 space-y-3">
+      <div className="font-medium">Staff ID card</div>
+      {card.loading && <Skeleton className="h-40" />}
+      {model && <TeacherIdCardPair model={model} />}
+      {!card.loading && !model && (
+        <p className="text-xs text-muted-foreground">No active card yet.</p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        {canManage && !model && (
+          <Button size="sm" onClick={() => issue("issue")} loading={busy === "issue"}>Generate card</Button>
+        )}
+        {canManage && model && (
+          <>
+            <Button size="sm" variant="outline" onClick={() => issue("reissue")} loading={busy === "reissue"}>Reissue</Button>
+            <Button size="sm" variant="destructive" onClick={() => issue("revoke")} loading={busy === "revoke"}>Revoke</Button>
+          </>
+        )}
+        {model && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => pdfApi.teacherIdCards({ teacherIds: [teacher.id] }).catch((e) => toastError(e))}
+          >
+            PDF
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
 

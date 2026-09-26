@@ -3,11 +3,14 @@ import { describe, it } from "node:test";
 import {
   ID_CARD_TEMPLATES,
   activeStudentsOnly,
+  activeTeachersOnly,
   hasTruthySelection,
   mapStudentToCardFields,
+  mapTeacherToCardFields,
   selectedStudentIds,
   studentsInSelectionScope,
   studentsMissingPhotos,
+  teachersMissingPhotos,
 } from "./id-card-data.ts";
 
 describe("ID card data mapping", () => {
@@ -133,5 +136,38 @@ describe("ID card data mapping", () => {
       studentsInSelectionScope(classList, selectedInClass).map((s) => s.id),
       ["2"],
     );
+  });
+});
+
+describe("Teacher ID card data mapping", () => {
+  it("maps employeeNo and designation without occupation", () => {
+    const fields = mapTeacherToCardFields(
+      {
+        id: "t1",
+        fullName: "Ali Teacher",
+        employeeNo: "EMP-01",
+        designation: "Senior",
+        photoUrl: "/uploads/t.png",
+        status: "ACTIVE",
+      },
+      { name: "Iqra", logoUrl: null, themeColor: "#0f766e" },
+    );
+    assert.equal(fields.fullName, "Ali Teacher");
+    assert.equal(fields.employeeNo, "EMP-01");
+    assert.equal(fields.designation, "Senior");
+    assert.equal(fields.photoUrl, "/uploads/t.png");
+    assert.equal("occupation" in fields, false);
+  });
+
+  it("flags teachers missing photos", () => {
+    const rows = [
+      { id: "1", fullName: "A", employeeNo: "E1", photoUrl: "/p.png", status: "ACTIVE" },
+      { id: "2", fullName: "B", employeeNo: "E2", photoUrl: null, status: "ACTIVE" },
+      { id: "3", fullName: "C", employeeNo: "E3", photoUrl: "/p.png", status: "INACTIVE" },
+    ];
+    const active = activeTeachersOnly(rows);
+    assert.equal(active.length, 2);
+    assert.equal(teachersMissingPhotos(active).length, 1);
+    assert.equal(teachersMissingPhotos(active)[0].id, "2");
   });
 });

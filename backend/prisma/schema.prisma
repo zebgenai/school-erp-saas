@@ -160,6 +160,7 @@ model School {
   feeInvoices   FeeInvoice[]
   feePayments   FeePayment[]
   attendances   StudentAttendance[]
+  teacherAttendances TeacherAttendance[]
   exams         Exam[]
   examSubjects  ExamSubject[]
   marks         Mark[]
@@ -188,6 +189,7 @@ model School {
   subscription      SchoolSubscription?
   saasInvoices      SaasInvoice[]
   idCards           StudentIdCard[]
+  teacherIdCards    TeacherIdCard[]
   notificationLogs  NotificationLog[]
 
   createdAt  DateTime @default(now())
@@ -309,6 +311,7 @@ model User {
   parent            Parent?
   staff             Staff?
   markedAttendances StudentAttendance[]
+  markedTeacherAttendances TeacherAttendance[]
   payrollsPaid      Payroll[]
   issuedBooks       BookIssue[]
   createdNotices    Notice[]
@@ -696,23 +699,33 @@ model FeePayment {
   @@index([schoolId, paymentDate])
 }
 
+enum TeacherAttendanceSource {
+  MANUAL
+  QR
+}
+
 model Teacher {
-  id        String   @id @default(uuid())
-  schoolId  String
-  school    School   @relation(fields: [schoolId], references: [id])
-  userId    String?  @unique
-  user      User?    @relation(fields: [userId], references: [id])
-  fullName  String
-  phone     String?
-  email     String?
-  address   String?
-  salary    Int?
-  status    String   @default("ACTIVE")
-  payrolls  Payroll[]
+  id           String   @id @default(uuid())
+  schoolId     String
+  school       School   @relation(fields: [schoolId], references: [id])
+  userId       String?  @unique
+  user         User?    @relation(fields: [userId], references: [id])
+  fullName     String
+  phone        String?
+  email        String?
+  address      String?
+  photoUrl     String?
+  employeeNo   String?
+  designation  String?
+  salary       Int?
+  status       String   @default("ACTIVE")
+  payrolls     Payroll[]
   timetableEntries TimetableEntry[]
   homeworks Homework[]
   onlineClasses OnlineClass[]
   calendarEvents AcademicCalendarEvent[]
+  attendances  TeacherAttendance[]
+  idCards      TeacherIdCard[]
 
   classesLed     Class[]   @relation("ClassTeacher")
   sectionsLed    Section[] @relation("SectionTeacher")
@@ -721,8 +734,55 @@ model Teacher {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([schoolId, employeeNo])
   @@index([schoolId])
   @@index([schoolId, status])
+}
+
+model TeacherIdCard {
+  id         String    @id @default(uuid())
+  schoolId   String
+  school     School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  teacherId  String
+  teacher    Teacher   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  qrToken    String    @unique
+  isActive   Boolean   @default(true)
+  issuedAt   DateTime  @default(now())
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([schoolId])
+  @@index([teacherId])
+  @@index([schoolId, teacherId])
+  @@index([schoolId, isActive])
+  // Partial unique: at most one active card per teacher is enforced in SQL
+  // (TeacherIdCard_one_active_per_teacher_idx: UNIQUE(teacherId) WHERE isActive = true).
+}
+
+model TeacherAttendance {
+  id         String                   @id @default(uuid())
+  schoolId   String
+  school     School                   @relation(fields: [schoolId], references: [id])
+  teacherId  String
+  teacher    Teacher                  @relation(fields: [teacherId], references: [id])
+  /// School-local calendar day key (UTC midnight of YYYY-MM-DD), same pattern as StudentAttendance.date.
+  workDate   DateTime
+  checkInAt  DateTime
+  checkOutAt DateTime?
+  source     TeacherAttendanceSource  @default(MANUAL)
+  remarks    String?
+  markedById String?
+  markedBy   User?                    @relation(fields: [markedById], references: [id])
+  createdAt  DateTime                 @default(now())
+  updatedAt  DateTime                 @updatedAt
+
+  @@unique([schoolId, teacherId, workDate])
+  @@index([schoolId])
+  @@index([teacherId])
+  @@index([workDate])
+  @@index([schoolId, workDate])
+  @@index([schoolId, teacherId])
 }
 
 model Parent {

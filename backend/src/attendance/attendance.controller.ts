@@ -16,10 +16,14 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser } from '../common/types/current-user.type';
 import { AttendanceService } from './attendance.service';
+import { TeacherAttendanceService } from './teacher-attendance.service';
 import { AttendanceQueryDto } from './dto/attendance-query.dto';
 import { BulkAttendanceDto } from './dto/bulk-attendance.dto';
 import { MarkAttendanceDto } from './dto/mark-attendance.dto';
 import { QrScanDto } from './dto/qr-scan.dto';
+import { TeacherAttendanceQueryDto } from './dto/teacher-attendance-query.dto';
+import { TeacherPunchDto } from './dto/teacher-punch.dto';
+import { TeacherQrScanDto } from './dto/teacher-qr-scan.dto';
 import { UpdateAttendanceDto } from './dto/update-attendance.dto';
 
 @ApiTags('Attendance')
@@ -27,7 +31,54 @@ import { UpdateAttendanceDto } from './dto/update-attendance.dto';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('attendance')
 export class AttendanceController {
-  constructor(private readonly attendanceService: AttendanceService) {}
+  constructor(
+    private readonly attendanceService: AttendanceService,
+    private readonly teacherAttendanceService: TeacherAttendanceService,
+  ) {}
+
+  @ApiOperation({
+    summary: 'Punch teacher attendance (check-in / check-out)',
+    description:
+      "Server decides check-in vs check-out from today's open record. Client timestamps are ignored. Teachers may only punch their own record.",
+  })
+  @Roles(UserRole.SUPER_ADMIN, UserRole.SCHOOL_ADMIN, UserRole.TEACHER)
+  @Post('teachers/punch')
+  punchTeacher(
+    @Body() dto: TeacherPunchDto,
+    @CurrentUserDecorator() user: CurrentUser,
+  ) {
+    return this.teacherAttendanceService.punch(dto, user);
+  }
+
+  @ApiOperation({
+    summary: 'Mark teacher attendance from a Teacher ID card QR token (TCC1.)',
+    description:
+      'School-staff only. Identity comes from the QR token → TeacherIdCard — never from a client teacherId. SUPER_ADMIN is excluded (needs school context).',
+  })
+  @Roles(UserRole.SCHOOL_ADMIN, UserRole.TEACHER, UserRole.RECEPTIONIST)
+  @Post('teachers/qr-scan')
+  punchTeacherFromQr(
+    @Body() dto: TeacherQrScanDto,
+    @CurrentUserDecorator() user: CurrentUser,
+  ) {
+    return this.teacherAttendanceService.punchFromQr(dto, user);
+  }
+
+  @ApiOperation({ summary: 'List teacher attendance records for a work date' })
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.SCHOOL_ADMIN,
+    UserRole.TEACHER,
+    UserRole.ACCOUNTANT,
+    UserRole.RECEPTIONIST,
+  )
+  @Get('teachers')
+  findTeacherAttendance(
+    @CurrentUserDecorator() user: CurrentUser,
+    @Query() query: TeacherAttendanceQueryDto,
+  ) {
+    return this.teacherAttendanceService.findAll(user, query);
+  }
 
   @ApiOperation({ summary: 'Mark single student attendance' })
   @Roles(UserRole.SUPER_ADMIN, UserRole.SCHOOL_ADMIN, UserRole.TEACHER)

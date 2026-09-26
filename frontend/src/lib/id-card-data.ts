@@ -53,6 +53,42 @@ export function studentsMissingPhotos<T extends { id: string; fullName?: string;
   return students.filter((s) => !(s.hasPhoto ?? Boolean(s.photoUrl)));
 }
 
+export type TeacherCardSource = {
+  id: string;
+  fullName?: string | null;
+  employeeNo?: string | null;
+  designation?: string | null;
+  photoUrl?: string | null;
+  status?: string | null;
+};
+
+export function mapTeacherToCardFields(teacher: TeacherCardSource, school: SchoolCardSource) {
+  return {
+    fullName: teacher.fullName ?? "",
+    employeeNo: teacher.employeeNo ?? "",
+    designation: teacher.designation ?? "",
+    photoUrl: teacher.photoUrl ?? "",
+    status: teacher.status ?? "ACTIVE",
+    schoolName: school.name ?? "",
+    schoolLogoUrl: school.logoUrl ?? "",
+    themeColor: school.themeColor ?? "#0f766e",
+    address: school.address ?? "",
+    phone: school.phone ?? "",
+    email: school.email ?? "",
+    domain: school.domain ?? "",
+  };
+}
+
+export function teachersMissingPhotos<T extends { id: string; fullName?: string; employeeNo?: string | null; photoUrl?: string | null; hasPhoto?: boolean }>(
+  teachers: T[],
+) {
+  return teachers.filter((t) => !(t.hasPhoto ?? Boolean(t.photoUrl)));
+}
+
+export function activeTeachersOnly<T extends { status?: string | null }>(teachers: T[]) {
+  return teachers.filter((t) => (t.status ?? "ACTIVE") === "ACTIVE");
+}
+
 export function activeStudentsOnly<T extends { status?: string | null }>(students: T[]) {
   return students.filter((s) => (s.status ?? "ACTIVE") === "ACTIVE");
 }

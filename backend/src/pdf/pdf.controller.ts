@@ -22,6 +22,7 @@ import { sendAttachment } from '../common/utils/send-attachment';
 import { DashboardQueryDto } from '../reports/dto/dashboard-query.dto';
 import { InvoiceArchiveDto } from './dto/invoice-archive.dto';
 import { IdCardsPdfDto } from './dto/id-cards-pdf.dto';
+import { TeacherIdCardsPdfDto } from './dto/teacher-id-cards-pdf.dto';
 import { PdfService } from './pdf.service';
 
 const FEE_ROLES = [
@@ -142,6 +143,24 @@ export class PdfController {
     @Res() res: Response,
   ) {
     const { buffer, filename } = await this.pdfService.generateIdCards(dto, user);
+    sendAttachment(res, buffer, 'application/pdf', filename);
+  }
+
+  @ApiOperation({ summary: 'Download teacher ID cards PDF' })
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.SCHOOL_ADMIN,
+    UserRole.TEACHER,
+    UserRole.RECEPTIONIST,
+    UserRole.ACCOUNTANT,
+  )
+  @Post('teacher-id-cards')
+  async teacherIdCards(
+    @Body() dto: TeacherIdCardsPdfDto,
+    @CurrentUserDecorator() user: CurrentUser,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.pdfService.generateTeacherIdCards(dto, user);
     sendAttachment(res, buffer, 'application/pdf', filename);
   }
 

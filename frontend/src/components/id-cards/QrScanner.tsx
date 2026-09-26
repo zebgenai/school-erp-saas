@@ -4,8 +4,14 @@ import jsQR from "jsqr";
 import { api } from "@/lib/api";
 import { Button, TextInput } from "@/components/form";
 import { cn } from "@/lib/utils";
+import {
+  formatWorkingHours,
+  type TeacherPunchScanResult,
+} from "@/lib/teacher-attendance-ui";
 
-type ScanResponse = {
+export type QrScannerMode = "student" | "teacher";
+
+type StudentScanResponse = {
   result: "SUCCESS" | "DUPLICATE" | "INVALID" | "REVOKED" | "INACTIVE_STUDENT";
   message: string;
   status?: string;
@@ -16,12 +22,24 @@ const SCAN_DEBOUNCE_MS = 2500;
 /** Cap decode resolution so jsQR stays responsive on HD webcam feeds. */
 const MAX_DECODE_WIDTH = 640;
 
-export function QrAttendanceScanner() {
+type Props = {
+  mode?: QrScannerMode;
+  /** Optional callback after a scan completes (success or business result). */
+  onResult?: (result: StudentScanResponse | TeacherPunchScanResult) => void;
+};
+
+/**
+ * Shared camera + jsQR scanner.
+ * - student → POST /attendance/qr-scan with `{ token }` (CC1.)
+ * - teacher → POST /attendance/teachers/qr-scan with `{ qrToken }` (TCC1.)
+ */
+export function QrAttendanceScanner({ mode = "student", onResult }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [banner, setBanner] = useState<ScanResponse | null>(null);
+  const [studentBanner, setStudentBanner] = useState<StudentScanResponse | null>(null);
+  const [teacherBanner, setTeacherBanner] = useState<TeacherPunchScanResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [manual, setManual] = useState("");
   const lastRef = useRef<{ token: string; at: number }>({ token: "", at: 0 });
@@ -44,7 +62,6 @@ export function QrAttendanceScanner() {
   };
 
   const stop = () => {
-    // Bump generation so any in-flight tick exits without scheduling another frame.
     loopGenerationRef.current += 1;
     clearRaf();
     stopStream();
@@ -60,20 +77,57 @@ export function QrAttendanceScanner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only
   }, []);
 
+  // Reset banners when mode changes; stop camera so the wrong endpoint isn't hit mid-scan.
+  useEffect(() => {
+    stop();
+    setStudentBanner(null);
+    setTeacherBanner(null);
+    setError(null);
+    setManual("");
+    lastRef.current = { token: "", at: 0 };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mode switch reset
+  }, [mode]);
+
   const submitToken = async (raw: string) => {
     const token = raw.trim();
     if (!token || busy) return;
     const now = Date.now();
-    // Client debounce is UX-only; DB unique attendance constraint is the real protection.
+    // Client debounce is UX-only; backend 10-minute / unique rules are authoritative.
     if (lastRef.current.token === token && now - lastRef.current.at < SCAN_DEBOUNCE_MS) return;
     lastRef.current = { token, at: now };
     setBusy(true);
     try {
-      const res = await api.post<ScanResponse>("/attendance/qr-scan", { token });
-      setBanner(res);
-      setError(null);
+      if (mode === "teacher") {
+        const res = await api.post<TeacherPunchScanResult>("/attendance/teachers/qr-scan", {
+          qrToken: token,
+        });
+        setTeacherBanner(res);
+        setStudentBanner(null);
+        setError(null);
+        onResult?.(res);
+      } else {
+        const res = await api.post<StudentScanResponse>("/attendance/qr-scan", { token });
+        setStudentBanner(res);
+        setTeacherBanner(null);
+        setError(null);
+        onResult?.(res);
+      }
     } catch (e: any) {
-      setBanner({ result: "INVALID", message: e?.message || "Invalid or inactive QR code." });
+      if (mode === "teacher") {
+        const fail: TeacherPunchScanResult = {
+          result: "INVALID_CARD",
+          message: e?.message || "Invalid or inactive teacher QR code.",
+        };
+        setTeacherBanner(fail);
+        onResult?.(fail);
+      } else {
+        const fail: StudentScanResponse = {
+          result: "INVALID",
+          message: e?.message || "Invalid or inactive QR code.",
+        };
+        setStudentBanner(fail);
+        onResult?.(fail);
+      }
     } finally {
       setBusy(false);
     }
@@ -101,10 +155,10 @@ export function QrAttendanceScanner() {
   };
 
   const start = async () => {
-    // Restart must not overlap prior detection loops.
     stop();
     setError(null);
-    setBanner(null);
+    setStudentBanner(null);
+    setTeacherBanner(null);
     const generation = loopGenerationRef.current;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -151,17 +205,23 @@ export function QrAttendanceScanner() {
     }
   };
 
-  const tone =
-    banner?.result === "SUCCESS"
+  const studentTone =
+    studentBanner?.result === "SUCCESS"
       ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-      : banner?.result === "DUPLICATE"
+      : studentBanner?.result === "DUPLICATE"
         ? "bg-amber-50 text-amber-800 border-amber-200"
-        : banner
+        : studentBanner
           ? "bg-rose-50 text-rose-800 border-rose-200"
           : "";
 
   return (
     <div className="space-y-4">
+      {mode === "teacher" && (
+        <div>
+          <h3 className="font-semibold text-base">Teacher Attendance</h3>
+          <p className="text-sm text-muted-foreground">Scan Teacher ID Card</p>
+        </div>
+      )}
       <div className="relative rounded-2xl overflow-hidden border bg-black aspect-video max-w-xl">
         <video ref={videoRef} className="size-full object-cover" muted playsInline />
         {!running && (
@@ -180,9 +240,12 @@ export function QrAttendanceScanner() {
         )}
       </div>
       {error && <p className="text-sm text-amber-700">{error}</p>}
-      {banner && (
-        <div className={cn("rounded-xl border px-4 py-3 text-sm font-medium", tone)}>{banner.message}</div>
+      {mode === "student" && studentBanner && (
+        <div className={cn("rounded-xl border px-4 py-3 text-sm font-medium", studentTone)}>
+          {studentBanner.message}
+        </div>
       )}
+      {mode === "teacher" && teacherBanner && <TeacherScanResultBanner result={teacherBanner} />}
       <form
         className="flex gap-2 max-w-xl"
         onSubmit={(e) => {
@@ -190,11 +253,91 @@ export function QrAttendanceScanner() {
           submitToken(manual);
         }}
       >
-        <TextInput value={manual} onChange={(e) => setManual(e.target.value)} placeholder="Or paste a QR token" />
+        <TextInput
+          value={manual}
+          onChange={(e) => setManual(e.target.value)}
+          placeholder={mode === "teacher" ? "Or paste a TCC1 teacher QR token" : "Or paste a QR token"}
+        />
         <Button type="submit" variant="outline" loading={busy}>
-          Mark
+          {mode === "teacher" ? "Punch" : "Mark"}
         </Button>
       </form>
+    </div>
+  );
+}
+
+export function TeacherScanResultBanner({ result }: { result: TeacherPunchScanResult }) {
+  const tone =
+    result.result === "CHECK_IN" || result.result === "CHECK_OUT"
+      ? "bg-emerald-50 text-emerald-900 border-emerald-200"
+      : result.result === "ALREADY_CHECKED_IN"
+        ? "bg-amber-50 text-amber-900 border-amber-200"
+        : result.result === "ALREADY_COMPLETED"
+          ? "bg-sky-50 text-sky-900 border-sky-200"
+          : "bg-rose-50 text-rose-900 border-rose-200";
+
+  const title =
+    result.result === "CHECK_IN"
+      ? "✅ Checked In"
+      : result.result === "CHECK_OUT"
+        ? "✅ Checked Out"
+        : result.result === "ALREADY_CHECKED_IN"
+          ? "⚠️ Already Checked In"
+          : result.result === "ALREADY_COMPLETED"
+            ? "ℹ️ Attendance Already Completed"
+            : result.result === "INACTIVE_TEACHER"
+              ? "❌ Teacher is inactive"
+              : "❌ Invalid Teacher Card";
+
+  const fmt = (iso?: string | Date | null) => {
+    if (!iso) return "—";
+    const d = typeof iso === "string" ? new Date(iso) : iso;
+    if (Number.isNaN(d.getTime())) return "—";
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  };
+
+  return (
+    <div className={cn("rounded-xl border px-4 py-3 text-sm space-y-1 max-w-xl", tone)}>
+      <div className="font-semibold text-base">{title}</div>
+      {result.teacher?.fullName && <div className="font-medium">{result.teacher.fullName}</div>}
+      {(result.teacher?.employeeNo || result.teacher?.designation) && (
+        <div className="text-xs opacity-80">
+          {[result.teacher.employeeNo && `Emp. ${result.teacher.employeeNo}`, result.teacher.designation]
+            .filter(Boolean)
+            .join(" · ")}
+        </div>
+      )}
+      {result.result === "CHECK_IN" && (
+        <div>Check-in time: {fmt(result.checkInAt)}</div>
+      )}
+      {result.result === "ALREADY_CHECKED_IN" && (
+        <>
+          <div>Check-in time: {fmt(result.checkInAt)}</div>
+          <div>Check-out available after 10 minutes</div>
+          {result.remainingSeconds != null && (
+            <div className="text-xs opacity-80">
+              ~{Math.ceil(result.remainingSeconds / 60)} min remaining
+            </div>
+          )}
+        </>
+      )}
+      {result.result === "CHECK_OUT" && (
+        <>
+          <div>Check-in: {fmt(result.checkInAt)}</div>
+          <div>Check-out: {fmt(result.checkOutAt)}</div>
+          <div>Working Hours: {formatWorkingHours(result.workingMinutes)}</div>
+        </>
+      )}
+      {result.result === "ALREADY_COMPLETED" && (
+        <>
+          <div>Check-in: {fmt(result.checkInAt)}</div>
+          <div>Check-out: {fmt(result.checkOutAt)}</div>
+          {result.workingMinutes != null && (
+            <div>Working Hours: {formatWorkingHours(result.workingMinutes)}</div>
+          )}
+        </>
+      )}
+      {!result.teacher && result.message && <div>{result.message}</div>}
     </div>
   );
 }

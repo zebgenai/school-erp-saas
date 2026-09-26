@@ -20,6 +20,18 @@ export class UpdateTeacherDto {
   address?: string;
 
   @IsOptional()
+  @IsString()
+  photoUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  employeeNo?: string;
+
+  @IsOptional()
+  @IsString()
+  designation?: string;
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(0)

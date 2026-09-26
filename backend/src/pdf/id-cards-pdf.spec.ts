@@ -51,7 +51,7 @@ function sampleCard(id: string, schoolId = 'school-a') {
   };
 }
 
-function makePdfService(idCardsService: any) {
+function makePdfService(idCardsService: any, teacherIdCardsService: any = {}) {
   return new PdfService(
     {} as any,
     {} as any,
@@ -60,6 +60,7 @@ function makePdfService(idCardsService: any) {
     {} as any,
     {} as any,
     idCardsService,
+    teacherIdCardsService,
   );
 }
 
@@ -179,5 +180,59 @@ describe('PdfService.generateIdCards', () => {
         makePdfService(idCardsService).generateIdCards({ allActive: true } as any, admin as any),
       BadRequestException,
     );
+  });
+});
+
+describe('PdfService.generateTeacherIdCards', () => {
+  it('builds a teacher ID card PDF from preview batches', async () => {
+    const teacherIdCardsService = {
+      preview: async (dto: any) => {
+        assert.equal(dto.allActive, true);
+        return {
+          cards: [
+            {
+              card: {
+                id: 'tc1',
+                isActive: true,
+                issuedAt: new Date().toISOString(),
+                revokedAt: null,
+                reference: 'EMP-1',
+                status: 'ACTIVE',
+              },
+              teacher: {
+                id: 't1',
+                fullName: 'Ali',
+                employeeNo: 'EMP-1',
+                designation: 'Senior',
+                photoUrl: null,
+                status: 'ACTIVE',
+              },
+              school: {
+                id: 'school-a',
+                name: 'Iqra',
+                logoUrl: null,
+                themeColor: null,
+                address: null,
+                phone: null,
+                email: null,
+                domain: null,
+              },
+              template: 'CLASSIC',
+              qrToken: '',
+              hasPhoto: false,
+              cardExists: false,
+            },
+          ],
+          hasMore: false,
+        };
+      },
+    };
+
+    const result = await makePdfService({}, teacherIdCardsService).generateTeacherIdCards(
+      { allActive: true } as any,
+      admin as any,
+    );
+    assert.ok(result.buffer.length > 0);
+    assert.equal(result.filename, 'teacher-id-cards-1.pdf');
   });
 });

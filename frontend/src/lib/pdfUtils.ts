@@ -261,4 +261,10 @@ export const pdfApi = {
     }),
   printIdCards: (body: Record<string, unknown>) =>
     printPdf("/pdf/id-cards", undefined, { method: "POST", body }),
+  teacherIdCards: (body: Record<string, unknown>) =>
+    fetchBinary("/pdf/teacher-id-cards", { method: "POST", body }).then(({ blob, filename }) => {
+      saveBlob(asPdfBlob(blob), filename ?? "teacher-id-cards.pdf");
+    }),
+  printTeacherIdCards: (body: Record<string, unknown>) =>
+    printPdf("/pdf/teacher-id-cards", undefined, { method: "POST", body }),
 };
