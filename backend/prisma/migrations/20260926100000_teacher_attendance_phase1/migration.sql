@@ -1,4 +1,4 @@
-﻿-- Teacher profile fields for Phase 1 attendance/ID-card readiness
+-- Teacher profile fields for Phase 1 attendance/ID-card readiness
 ALTER TABLE "Teacher" ADD COLUMN IF NOT EXISTS "photoUrl" TEXT;
 ALTER TABLE "Teacher" ADD COLUMN IF NOT EXISTS "employeeNo" TEXT;
 ALTER TABLE "Teacher" ADD COLUMN IF NOT EXISTS "designation" TEXT;
