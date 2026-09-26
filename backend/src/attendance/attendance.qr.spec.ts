@@ -286,6 +286,108 @@ describe('QR attendance scan', () => {
       /school staff|school context/i,
     );
   });
+
+  it('ATTENDANCE_SCANNER can successfully scan a valid student QR', async () => {
+    const token = generateQrToken();
+    const scanner = {
+      id: 'scanner-1',
+      email: 'scanner@test',
+      name: 'Scanner',
+      role: UserRole.ATTENDANCE_SCANNER,
+      schoolId: schoolA,
+    };
+    const created: { data?: Record<string, unknown> } = {};
+    const svc = serviceWith({
+      studentIdCard: {
+        findUnique: async () => ({
+          qrToken: token,
+          schoolId: schoolA,
+          isActive: true,
+          revokedAt: null,
+          student: studentA,
+        }),
+      },
+      studentAttendance: {
+        findUnique: async () => null,
+        create: async ({ data }: { data: Record<string, unknown> }) => {
+          created.data = data;
+          return { id: 'att-1', ...data };
+        },
+      },
+      school: {
+        findUnique: async () => ({
+          id: schoolA,
+          timezone: 'Asia/Karachi',
+          attendancePresentUntil: null,
+          attendanceLateUntil: null,
+        }),
+      },
+    });
+    const result = await svc.markFromQrScan({ token }, scanner as any);
+    assert.equal(result.result, 'SUCCESS');
+    assert.equal(created.data?.studentId, studentA.id);
+    assert.equal(created.data?.schoolId, schoolA);
+  });
+
+  it('ATTENDANCE_SCANNER cannot scan a student QR from another school', async () => {
+    const token = generateQrToken();
+    const scanner = {
+      id: 'scanner-1',
+      email: 'scanner@test',
+      name: 'Scanner',
+      role: UserRole.ATTENDANCE_SCANNER,
+      schoolId: schoolA,
+    };
+    const svc = serviceWith({
+      studentIdCard: {
+        findUnique: async () => ({
+          qrToken: token,
+          schoolId: schoolB,
+          isActive: true,
+          revokedAt: null,
+          student: { ...studentA, schoolId: schoolB },
+        }),
+      },
+    });
+    const result = await svc.markFromQrScan({ token }, scanner as any);
+    assert.equal(result.result, 'INVALID');
+  });
+
+  it('SCHOOL_ADMIN student QR still works', async () => {
+    const token = generateQrToken();
+    const admin = {
+      id: 'admin-1',
+      email: 'admin@test',
+      name: 'Admin',
+      role: UserRole.SCHOOL_ADMIN,
+      schoolId: schoolA,
+    };
+    const svc = serviceWith({
+      studentIdCard: {
+        findUnique: async () => ({
+          qrToken: token,
+          schoolId: schoolA,
+          isActive: true,
+          revokedAt: null,
+          student: studentA,
+        }),
+      },
+      studentAttendance: {
+        findUnique: async () => null,
+        create: async ({ data }: { data: Record<string, unknown> }) => ({ id: 'att-1', ...data }),
+      },
+      school: {
+        findUnique: async () => ({
+          id: schoolA,
+          timezone: 'Asia/Karachi',
+          attendancePresentUntil: null,
+          attendanceLateUntil: null,
+        }),
+      },
+    });
+    const result = await svc.markFromQrScan({ token }, admin as any);
+    assert.equal(result.result, 'SUCCESS');
+  });
 });
 
 describe('manual attendance still upserts', () => {

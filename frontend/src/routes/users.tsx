@@ -12,7 +12,11 @@ import { Modal, ConfirmDialog } from "@/components/Modal";
 import { useApiQuery, asList } from "@/lib/hooks";
 import { api } from "@/lib/api";
 import { PASSWORD_POLICY_MESSAGE, isStrongPassword } from "@/lib/force-password";
-import { usePermissions } from "@/lib/permissions";
+import { usePermissions, roleDisplayName } from "@/lib/permissions";
+import {
+  SCHOOL_USER_ASSIGNABLE_ROLES,
+  SCHOOL_USER_ROLE_TABS,
+} from "@/lib/school-user-roles";
 import { useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/users")({
@@ -20,16 +24,9 @@ export const Route = createFileRoute("/users")({
   component: () => <AppShell><UserManagementGuard /></AppShell>,
 });
 
-const TABS = [
-  { id: "SCHOOL_ADMIN", label: "School Admins" },
-  { id: "TEACHER", label: "Teachers" },
-  { id: "ACCOUNTANT", label: "Accountants" },
-  { id: "RECEPTIONIST", label: "Receptionists" },
-  { id: "PARENT", label: "Parents" },
-] as const;
-
-const CREATE_ROLES = ["SCHOOL_ADMIN", "ACCOUNTANT", "TEACHER", "RECEPTIONIST", "PARENT"];
-const CHANGE_ROLES = ["SCHOOL_ADMIN", "ACCOUNTANT", "TEACHER", "RECEPTIONIST", "PARENT"];
+const TABS = SCHOOL_USER_ROLE_TABS;
+const CREATE_ROLES = [...SCHOOL_USER_ASSIGNABLE_ROLES];
+const CHANGE_ROLES = [...SCHOOL_USER_ASSIGNABLE_ROLES];
 
 function UserManagementGuard() {
   const { can } = usePermissions();
@@ -298,7 +295,7 @@ function CreateUserModal({ defaultRole, onClose, onSaved }: { defaultRole: strin
         <Field label="Role *">
           <Select value={form.role} onChange={(e) => set("role", e.target.value)}>
             {CREATE_ROLES.map((r) => (
-              <option key={r} value={r}>{r.replace("_", " ")}</option>
+              <option key={r} value={r}>{roleDisplayName(r)}</option>
             ))}
           </Select>
         </Field>
@@ -318,7 +315,7 @@ function ViewUserModal({ user, onClose }: { user: any; onClose: () => void }) {
         {[
           ["Email", user.email],
           ["Phone", user.phone || "—"],
-          ["Role", user.role?.replace("_", " ")],
+          ["Role", roleDisplayName(user.role)],
           ["Status", user.status],
           ["Created", user.createdAt ? new Date(user.createdAt).toLocaleString() : "—"],
           ["Last Login", user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : "Never"],
@@ -412,7 +409,7 @@ function ChangeRoleModal({ user, onClose, onSaved }: any) {
     setSaving(true);
     try {
       await api.patch(`/users/${user.id}/change-role`, { role });
-      toast.success(`Role changed to ${role.replace("_", " ")}`);
+      toast.success(`Role changed to ${roleDisplayName(role)}`);
       onSaved();
     } catch (err: any) { toast.error(err.message ?? "Failed"); } finally { setSaving(false); }
   };
@@ -422,12 +419,12 @@ function ChangeRoleModal({ user, onClose, onSaved }: any) {
       footer={<><Button variant="outline" onClick={onClose}>Cancel</Button><Button loading={saving} onClick={(e: any) => save(e)}><UserCog className="size-4" /> Change Role</Button></>}>
       <form onSubmit={save} className="space-y-4">
         <Field label="Current Role">
-          <div className="text-sm font-semibold text-primary">{user.role?.replace("_", " ")}</div>
+          <div className="text-sm font-semibold text-primary">{roleDisplayName(user.role)}</div>
         </Field>
         <Field label="New Role *">
           <Select value={role} onChange={(e) => setRole(e.target.value)}>
             {CHANGE_ROLES.map((r) => (
-              <option key={r} value={r}>{r.replace("_", " ")}</option>
+              <option key={r} value={r}>{roleDisplayName(r)}</option>
             ))}
           </Select>
         </Field>

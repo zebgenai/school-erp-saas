@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { CalendarCheck, Save, UserCheck, UserX, Clock, Plane, QrCode } from "lucide-react";
 import { toast } from "sonner";
@@ -24,68 +24,108 @@ export const Route = createFileRoute("/attendance")({
 
 const STATUSES = ["PRESENT", "ABSENT", "LEAVE", "LATE"] as const;
 type S = typeof STATUSES[number];
-type Audience = "students" | "teachers";
+type AttendanceView = "students" | "teachers" | "scanner";
 
 function AttendancePage() {
-  const [audience, setAudience] = useState<Audience>("students");
   const { user } = useAuth();
   const { can } = usePermissions();
   const canMark = can("attendance.mark");
   const role = (user?.role || "").toUpperCase();
+  const isScannerRole = role === "ATTENDANCE_SCANNER";
   const canScan =
     Boolean(user?.schoolId) &&
-    (canMark || role === "RECEPTIONIST") &&
+    (isScannerRole || canMark || role === "RECEPTIONIST") &&
     role !== "SUPER_ADMIN" &&
     role !== "PLATFORM_MANAGER";
-  const [showScanner, setShowScanner] = useState(false);
+  const [view, setView] = useState<AttendanceView>(() =>
+    isScannerRole ? "scanner" : "students",
+  );
   const [teacherReload, setTeacherReload] = useState(0);
+
+  useEffect(() => {
+    if (isScannerRole) setView("scanner");
+  }, [isScannerRole]);
+
+  useEffect(() => {
+    if (view === "scanner" && !canScan && !isScannerRole) {
+      setView("students");
+    }
+  }, [view, canScan, isScannerRole]);
+
+  if (isScannerRole) {
+    return (
+      <div>
+        <PageHeader
+          title="Unified Attendance Scanner"
+          description="Scan a Student or Teacher QR card. The system automatically identifies the card type and records attendance."
+        />
+        <Card>
+          <QrAttendanceScanner mode="auto" />
+        </Card>
+      </div>
+    );
+  }
+
+  const tabs: Array<{ id: AttendanceView; label: string; hidden?: boolean }> = [
+    { id: "students", label: "Students" },
+    { id: "teachers", label: "Teachers" },
+    { id: "scanner", label: "Unified Scanner", hidden: !canScan },
+  ];
 
   return (
     <div>
       <PageHeader
         title="Attendance"
         description={
-          audience === "teachers"
-            ? "Teacher check-in / check-out and QR scanning at the gate."
-            : "Mark daily attendance for each class and section."
-        }
-        actions={
-          canScan ? (
-            <Button onClick={() => setShowScanner((v) => !v)}>
-              <QrCode className="size-4" /> {showScanner ? "Hide QR scanner" : "QR scanner"}
-            </Button>
-          ) : undefined
+          view === "scanner"
+            ? "Scan a Student or Teacher QR card. The system automatically identifies the card type and records attendance."
+            : view === "teachers"
+              ? "Teacher check-in / check-out records for the selected work day."
+              : "Mark daily attendance for each class and section."
         }
       />
 
-      {showScanner && canScan && (
-        <Card className="mb-4">
+      <div className="flex flex-wrap gap-2 mb-4">
+        {tabs
+          .filter((t) => !t.hidden)
+          .map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setView(t.id)}
+              className={cn(
+                "h-8 px-3 rounded-lg text-sm font-medium border",
+                view === t.id ? "bg-muted border-primary/40" : "bg-card hover:bg-muted/60",
+              )}
+            >
+              {t.id === "scanner" ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <QrCode className="size-3.5" /> {t.label}
+                </span>
+              ) : (
+                t.label
+              )}
+            </button>
+          ))}
+      </div>
+
+      {view === "scanner" && canScan ? (
+        <Card>
+          <div className="mb-3">
+            <h2 className="font-semibold text-base">Unified Attendance Scanner</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Scan a Student or Teacher QR card. The system automatically identifies the card type and records attendance.
+            </p>
+          </div>
           <QrAttendanceScanner
             mode="auto"
             onResult={() => setTeacherReload((n) => n + 1)}
           />
         </Card>
-      )}
-
-      <div className="flex flex-wrap gap-2 mb-4">
-        {(["students", "teachers"] as Audience[]).map((a) => (
-          <button
-            key={a}
-            type="button"
-            onClick={() => setAudience(a)}
-            className={cn(
-              "h-8 px-3 rounded-lg text-sm font-medium border",
-              audience === a ? "bg-muted border-primary/40" : "bg-card hover:bg-muted/60",
-            )}
-          >
-            {a === "students" ? "Students" : "Teachers"}
-          </button>
-        ))}
-      </div>
-      {audience === "students" ? (
-        <StudentAttendancePanel />
-      ) : (
+      ) : view === "teachers" ? (
         <TeacherAttendancePanel reloadToken={teacherReload} />
+      ) : (
+        <StudentAttendancePanel />
       )}
     </div>
   );
@@ -151,14 +191,6 @@ function StudentAttendancePanel() {
 
   return (
     <div>
-      <div className="flex justify-end mb-4">
-        {canMark ? (
-          <Link to="/id-cards">
-            <Button variant="outline"><QrCode className="size-4" /> Student QR scanner</Button>
-          </Link>
-        ) : null}
-      </div>
-
       <Card className="mb-4">
         <div className="grid sm:grid-cols-4 gap-3">
           <Select value={classId} onChange={(e) => setClassId(e.target.value)}>
@@ -288,7 +320,7 @@ function TeacherAttendancePanel({ reloadToken = 0 }: { reloadToken?: number }) {
             />
           </div>
           <p className="text-xs text-muted-foreground max-w-xs text-right">
-            Use the page QR scanner for student (CC1.) or teacher (TCC1.) cards — no tab switch needed.
+            Use the Unified Scanner tab to scan teacher (TCC1.) or student (CC1.) ID cards.
           </p>
         </div>
       </Card>
@@ -318,7 +350,7 @@ function TeacherAttendancePanel({ reloadToken = 0 }: { reloadToken?: number }) {
           <EmptyState
             icon={CalendarCheck}
             title="No teacher punches yet"
-            description="Open QR scanner and scan a Teacher ID Card."
+            description="Open the Unified Scanner tab and scan a Teacher ID Card."
           />
         ) : (
           <div className="overflow-x-auto">

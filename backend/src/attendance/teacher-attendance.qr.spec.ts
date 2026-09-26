@@ -458,4 +458,111 @@ describe('Teacher QR attendance punchFromQr', () => {
       /school staff|school context/i,
     );
   });
+
+  it('ATTENDANCE_SCANNER can scan any active teacher QR in its school', async () => {
+    const token = generateTeacherQrToken();
+    const scanner = {
+      id: 'scanner-1',
+      email: 'scanner@test',
+      name: 'Scanner',
+      role: UserRole.ATTENDANCE_SCANNER,
+      schoolId: schoolA,
+    };
+    const svc = new TeacherAttendanceService({
+      teacherIdCard: {
+        findUnique: async () => ({
+          id: 'card-1',
+          qrToken: token,
+          schoolId: schoolA,
+          isActive: true,
+          revokedAt: null,
+          teacher: teacherB,
+        }),
+      },
+      school: { findUnique: async () => ({ id: schoolA, timezone: 'Asia/Karachi' }) },
+      teacherAttendance: {
+        findUnique: async () => null,
+        create: async ({ data }: { data: Record<string, unknown> }) =>
+          baseInclude({ id: 'att-1', ...data }, teacherB),
+      },
+    } as any);
+    const result = await svc.punchFromQr({ qrToken: token }, scanner as any);
+    assert.equal(result.result, 'CHECK_IN');
+    assert.equal(result.teacher?.id, teacherB.id);
+  });
+
+  it('ATTENDANCE_SCANNER cannot scan teacher QR from another school', async () => {
+    const token = generateTeacherQrToken();
+    const scanner = {
+      id: 'scanner-1',
+      email: 'scanner@test',
+      name: 'Scanner',
+      role: UserRole.ATTENDANCE_SCANNER,
+      schoolId: schoolA,
+    };
+    const svc = new TeacherAttendanceService({
+      teacherIdCard: {
+        findUnique: async () => ({
+          id: 'card-1',
+          qrToken: token,
+          schoolId: schoolB,
+          isActive: true,
+          revokedAt: null,
+          teacher: { ...teacherA, schoolId: schoolB },
+        }),
+      },
+    } as any);
+    const result = await svc.punchFromQr({ qrToken: token }, scanner as any);
+    assert.equal(result.result, 'INVALID_CARD');
+  });
+
+  it('RECEPTIONIST can still scan any teacher QR in school', async () => {
+    const token = generateTeacherQrToken();
+    const receptionist = {
+      id: 'recv-1',
+      email: 'recv@test',
+      name: 'Reception',
+      role: UserRole.RECEPTIONIST,
+      schoolId: schoolA,
+    };
+    const svc = new TeacherAttendanceService({
+      teacherIdCard: {
+        findUnique: async () => ({
+          id: 'card-1',
+          qrToken: token,
+          schoolId: schoolA,
+          isActive: true,
+          revokedAt: null,
+          teacher: teacherB,
+        }),
+      },
+      school: { findUnique: async () => ({ id: schoolA, timezone: 'Asia/Karachi' }) },
+      teacherAttendance: {
+        findUnique: async () => null,
+        create: async ({ data }: { data: Record<string, unknown> }) =>
+          baseInclude({ id: 'att-1', ...data }, teacherB),
+      },
+    } as any);
+    const result = await svc.punchFromQr({ qrToken: token }, receptionist as any);
+    assert.equal(result.result, 'CHECK_IN');
+  });
+
+  it('ATTENDANCE_SCANNER cannot manually punch teacher attendance', async () => {
+    const scanner = {
+      id: 'scanner-1',
+      email: 'scanner@test',
+      name: 'Scanner',
+      role: UserRole.ATTENDANCE_SCANNER,
+      schoolId: schoolA,
+    };
+    const svc = new TeacherAttendanceService({
+      teacher: {
+        findUnique: async () => teacherB,
+      },
+    } as any);
+    await assert.rejects(
+      () => svc.punch({ teacherId: teacherB.id }, scanner as any),
+      ForbiddenException,
+    );
+  });
 });

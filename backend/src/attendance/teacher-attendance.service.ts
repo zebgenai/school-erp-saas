@@ -355,8 +355,12 @@ export class TeacherAttendanceService {
       return;
     }
 
-    // Reception/gate staff may scan teacher cards (QR only).
-    if (currentUser.role === UserRole.RECEPTIONIST && source === TeacherAttendanceSource.QR) {
+    // Gate/scanner staff may scan any teacher card in-school (QR only — never manual punch).
+    if (
+      (currentUser.role === UserRole.RECEPTIONIST ||
+        currentUser.role === UserRole.ATTENDANCE_SCANNER) &&
+      source === TeacherAttendanceSource.QR
+    ) {
       return;
     }
 

@@ -48,6 +48,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   [UserRole.ACCOUNTANT]: 'Accountant',
   [UserRole.TEACHER]: 'Teacher',
   [UserRole.RECEPTIONIST]: 'Receptionist',
+  [UserRole.ATTENDANCE_SCANNER]: 'Attendance Scanner',
   [UserRole.PARENT]: 'Parent',
   [UserRole.STUDENT]: 'Student',
 };
@@ -65,6 +66,7 @@ export const SCHOOL_SCOPED_ROLES: UserRole[] = [
   UserRole.ACCOUNTANT,
   UserRole.TEACHER,
   UserRole.RECEPTIONIST,
+  UserRole.ATTENDANCE_SCANNER,
   UserRole.PARENT,
   UserRole.STUDENT,
 ];
@@ -166,6 +168,11 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, Partial<Record<PermKey, 
         k === 'academic-calendar.view' ||
         k === 'fees.view',
     ]),
+  ) as Record<PermKey, boolean>,
+
+  /** QR-only gate role — UI hints only; API security is @Roles on QR endpoints. */
+  ATTENDANCE_SCANNER: Object.fromEntries(
+    ALL_PERMISSION_KEYS.map((k) => [k, k === 'attendance.view' || k === 'attendance.create']),
   ) as Record<PermKey, boolean>,
 
   PARENT: Object.fromEntries(ALL_PERMISSION_KEYS.map((k) => [k, false])) as Record<PermKey, boolean>,

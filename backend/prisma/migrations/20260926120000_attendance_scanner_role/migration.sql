@@ -1,0 +1,2 @@
+-- Add ATTENDANCE_SCANNER to UserRole (no other schema changes).
+ALTER TYPE "UserRole" ADD VALUE IF NOT EXISTS 'ATTENDANCE_SCANNER';

@@ -53,9 +53,14 @@ export class AttendanceController {
   @ApiOperation({
     summary: 'Mark teacher attendance from a Teacher ID card QR token (TCC1.)',
     description:
-      'School-staff only. Identity comes from the QR token → TeacherIdCard — never from a client teacherId. SUPER_ADMIN is excluded (needs school context).',
+      'School-staff only (SCHOOL_ADMIN, TEACHER, RECEPTIONIST, ATTENDANCE_SCANNER). Identity comes from the QR token → TeacherIdCard — never from a client teacherId. SUPER_ADMIN is excluded (needs school context).',
   })
-  @Roles(UserRole.SCHOOL_ADMIN, UserRole.TEACHER, UserRole.RECEPTIONIST)
+  @Roles(
+    UserRole.SCHOOL_ADMIN,
+    UserRole.TEACHER,
+    UserRole.RECEPTIONIST,
+    UserRole.ATTENDANCE_SCANNER,
+  )
   @Post('teachers/qr-scan')
   punchTeacherFromQr(
     @Body() dto: TeacherQrScanDto,
@@ -97,9 +102,9 @@ export class AttendanceController {
   @ApiOperation({
     summary: 'Mark attendance from a student ID card QR token',
     description:
-      'School-staff only (SCHOOL_ADMIN, TEACHER). SUPER_ADMIN is excluded because QR scans require unambiguous school context; platform admins should use manual attendance with an explicit schoolId.',
+      'School-staff only (SCHOOL_ADMIN, TEACHER, ATTENDANCE_SCANNER). SUPER_ADMIN is excluded because QR scans require unambiguous school context; platform admins should use manual attendance with an explicit schoolId.',
   })
-  @Roles(UserRole.SCHOOL_ADMIN, UserRole.TEACHER)
+  @Roles(UserRole.SCHOOL_ADMIN, UserRole.TEACHER, UserRole.ATTENDANCE_SCANNER)
   @Post('qr-scan')
   markFromQrScan(@Body() dto: QrScanDto, @CurrentUserDecorator() user: CurrentUser) {
     return this.attendanceService.markFromQrScan(dto, user);

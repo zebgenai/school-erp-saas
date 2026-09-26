@@ -5,14 +5,21 @@ import {
   LayoutDashboard, Users, GraduationCap, CalendarCheck, Receipt,
   ClipboardList, BarChart3, Settings, LogOut, Menu, X, ChevronLeft, School,
   UserCog, Briefcase, Wallet, BookOpen, Calendar, Bus, Megaphone, Building2, HeartHandshake,
-  DollarSign, Activity, ShieldCheck, Globe, KeyRound, CalendarDays, CreditCard,
+  DollarSign, Activity, ShieldCheck, Globe, KeyRound, CalendarDays, CreditCard, QrCode,
 } from "lucide-react";
 import { resolveFileUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { schoolLoginOrigin } from "@/lib/host";
 import { useAppHost } from "@/lib/use-app-host";
 import { applySchoolTheme } from "@/lib/school-branding";
-import { usePermissions, homeRouteForRole, isPlatformStaff, roleDisplayName, type Permission } from "@/lib/permissions";
+import {
+  usePermissions,
+  homeRouteForRole,
+  isPlatformStaff,
+  resolveAppNavKind,
+  roleDisplayName,
+  type Permission,
+} from "@/lib/permissions";
 import { FORCE_CHANGE_PASSWORD_PATH, shouldRedirectForcedUser } from "@/lib/force-password";
 import { otpChallengeStore } from "@/lib/otp-challenge";
 import { cn } from "@/lib/utils";
@@ -35,6 +42,13 @@ const studentNavGroups: NavGroup[] = [
   { label: "My Portal", items: [
     { to: "/student", label: "My Dashboard", icon: LayoutDashboard },
     { to: "/academic-calendar", label: "Academic Calendar", icon: CalendarDays },
+  ]},
+];
+
+/** Navigation shown to ATTENDANCE_SCANNER — Unified Scanner only (no Dashboard) */
+const attendanceScannerNavGroups: NavGroup[] = [
+  { label: "Attendance Scanner", items: [
+    { to: "/attendance", label: "Unified Scanner", icon: QrCode },
   ]},
 ];
 
@@ -199,20 +213,27 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   const isOwner = user.role === "SUPER_ADMIN";
-  const isParent     = user.role === "PARENT";
-  const isTeacher    = user.role === "TEACHER";
-  const isStudent    = user.role === "STUDENT";
-  const isPortalOnly = isParent || isStudent;
+  const navKind = resolveAppNavKind(user.role, user.schoolId);
+  const isPortalOnly =
+    navKind === "parent" ||
+    navKind === "student" ||
+    navKind === "attendance-scanner";
 
-  const baseGroups = isSuperAdmin && !user.schoolId
-    ? superAdminNavGroups.map((group) => ({
-        ...group,
-        items: group.items.filter((item) => !item.ownerOnly || isOwner),
-      }))
-    : isParent  ? parentNavGroups
-    : isTeacher ? teacherNavGroups
-    : isStudent ? studentNavGroups
-    : schoolNavGroups;
+  const baseGroups =
+    navKind === "platform"
+      ? superAdminNavGroups.map((group) => ({
+          ...group,
+          items: group.items.filter((item) => !item.ownerOnly || isOwner),
+        }))
+      : navKind === "parent"
+        ? parentNavGroups
+        : navKind === "student"
+          ? studentNavGroups
+          : navKind === "attendance-scanner"
+            ? attendanceScannerNavGroups
+            : navKind === "teacher"
+              ? teacherNavGroups
+              : schoolNavGroups;
 
   const navGroups = isPortalOnly
     ? baseGroups

@@ -25,6 +25,7 @@ const SCHOOL_ASSIGNABLE_ROLES: UserRole[] = [
   UserRole.ACCOUNTANT,
   UserRole.TEACHER,
   UserRole.RECEPTIONIST,
+  UserRole.ATTENDANCE_SCANNER,
   UserRole.PARENT,
 ];
 
