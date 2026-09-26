@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CreditCard, IdCard, Printer, QrCode, Search, Download } from "lucide-react";
 import { toast } from "sonner";
 import { toastError, toastSuccess } from "@/lib/errors";
@@ -26,8 +26,20 @@ import {
   studentsInSelectionScope,
   studentsMissingPhotos,
   teachersMissingPhotos,
+  DEFAULT_TEACHER_CARD_COLORS,
+  resolveTeacherCardColors,
   type IdCardTemplateId,
+  type TeacherCardColors,
 } from "@/lib/id-card-data";
+import {
+  buildTeacherSettingsQuery,
+  buildTeacherSettingsResetBody,
+  buildTeacherSettingsSaveBody,
+  mapSuperAdminSchoolsList,
+  resolveTeacherSettingsTargetSchoolId,
+  shouldApplyTeacherSettingsResponse,
+  shouldShowTeacherSettingsSchoolPicker,
+} from "@/lib/teacher-id-card-settings-ui";
 import { pdfApi } from "@/lib/pdfUtils";
 import { cn } from "@/lib/utils";
 
@@ -138,12 +150,20 @@ function IdCardsPage() {
         <BulkTeacherCards template={template} setTemplate={setTemplate} canManage={canManageTeachers} />
       )}
       {tab === "templates" && (
-        <TemplatesTab
-          current={((school.data as any)?.idCardTemplate || template) as IdCardTemplateId}
-          canManage={can("settings.manage")}
-          schoolId={(school.data as any)?.id}
-          onSaved={() => school.refetch()}
-        />
+        <div className="space-y-6">
+          <TemplatesTab
+            current={((school.data as any)?.idCardTemplate || template) as IdCardTemplateId}
+            canManage={can("settings.manage")}
+            schoolId={(school.data as any)?.id}
+            onSaved={() => school.refetch()}
+          />
+          {audience === "teachers" && can("settings.manage") && (
+            <TeacherIdCardDesignPanel
+              ownSchoolId={(school.data as any)?.id ?? user?.schoolId ?? undefined}
+              template={template}
+            />
+          )}
+        </div>
       )}
       {tab === "scanner" && canMark && audience === "students" && (
         <Card>
@@ -957,5 +977,211 @@ function TemplatesTab({ current, canManage, schoolId, onSaved }: { current: IdCa
         </div>
       )}
     </div>
+  );
+}
+
+function TeacherIdCardDesignPanel({
+  ownSchoolId,
+  template,
+}: {
+  /** Logged-in school for SCHOOL_ADMIN. Ignored for SUPER_ADMIN targeting. */
+  ownSchoolId?: string;
+  template: IdCardTemplateId;
+}) {
+  const { user } = useAuth();
+  const role = user?.role;
+  const showSchoolPicker = shouldShowTeacherSettingsSchoolPicker(role);
+  const [selectedSchoolId, setSelectedSchoolId] = useState("");
+  const targetSchoolIdRef = useRef<string | null>(null);
+
+  const schoolsQuery = useApiQuery<any>(
+    showSchoolPicker ? "/super-admin/schools" : null,
+    showSchoolPicker ? { limit: 200 } : undefined,
+  );
+  const schoolOptions = useMemo(
+    () => mapSuperAdminSchoolsList(schoolsQuery.data),
+    [schoolsQuery.data],
+  );
+
+  const targetSchoolId = resolveTeacherSettingsTargetSchoolId({
+    role,
+    ownSchoolId,
+    selectedSchoolId: showSchoolPicker ? selectedSchoolId : null,
+  });
+  targetSchoolIdRef.current = targetSchoolId;
+
+  const settingsQueryParams = buildTeacherSettingsQuery(role, targetSchoolId);
+  const settings = useApiQuery<any>(
+    targetSchoolId ? "/id-cards/teacher-settings" : null,
+    settingsQueryParams,
+  );
+
+  const [colors, setColors] = useState<TeacherCardColors>({ ...DEFAULT_TEACHER_CARD_COLORS });
+  const [saving, setSaving] = useState(false);
+  const [resetting, setResetting] = useState(false);
+
+  // Switching schools must drop previous school's colors immediately.
+  useEffect(() => {
+    setColors({ ...DEFAULT_TEACHER_CARD_COLORS });
+  }, [targetSchoolId]);
+
+  useEffect(() => {
+    if (
+      settings.data?.colors &&
+      shouldApplyTeacherSettingsResponse(settings.data.schoolId, targetSchoolId)
+    ) {
+      setColors(resolveTeacherCardColors(settings.data.colors));
+    }
+  }, [settings.data, targetSchoolId]);
+
+  const set = (key: keyof TeacherCardColors, value: string) =>
+    setColors((c) => ({ ...c, [key]: value }));
+
+  const selectedSchoolName =
+    schoolOptions.find((s) => s.id === targetSchoolId)?.name ||
+    (showSchoolPicker ? "Selected school" : "Your School");
+
+  const previewModel: TeacherIdCardPreviewModel = {
+    template,
+    teacher: {
+      fullName: "Sample Teacher",
+      employeeNo: "EMP-001",
+      designation: "Senior Teacher",
+      photoUrl: null,
+    },
+    school: {
+      name: selectedSchoolName,
+      teacherCardColors: colors,
+    },
+    card: { reference: "EMP-001" },
+  };
+
+  const save = async () => {
+    // Capture at click time so a mid-flight school switch cannot retarget the request.
+    const schoolIdForRequest = targetSchoolId;
+    if (!schoolIdForRequest) return;
+    setSaving(true);
+    try {
+      const res: any = await api.patch(
+        "/id-cards/teacher-settings",
+        buildTeacherSettingsSaveBody(colors, role, schoolIdForRequest),
+      );
+      if (schoolIdForRequest !== targetSchoolIdRef.current) return;
+      if (shouldApplyTeacherSettingsResponse(res.schoolId, schoolIdForRequest)) {
+        setColors(resolveTeacherCardColors(res.colors));
+      }
+      toastSuccess("Teacher ID card design saved");
+      settings.refetch();
+    } catch (e: any) {
+      toastError(e);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const reset = async () => {
+    const schoolIdForRequest = targetSchoolId;
+    if (!schoolIdForRequest) return;
+    setResetting(true);
+    try {
+      const res: any = await api.post(
+        "/id-cards/teacher-settings/reset",
+        buildTeacherSettingsResetBody(role, schoolIdForRequest),
+      );
+      if (schoolIdForRequest !== targetSchoolIdRef.current) return;
+      if (shouldApplyTeacherSettingsResponse(res.schoolId, schoolIdForRequest)) {
+        setColors(resolveTeacherCardColors(res.colors));
+      }
+      toastSuccess("Reset to default teacher card colors");
+      settings.refetch();
+    } catch (e: any) {
+      toastError(e);
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  const fields: Array<{ key: keyof TeacherCardColors; label: string }> = [
+    { key: "primary", label: "Primary Color" },
+    { key: "accent", label: "Accent Color" },
+    { key: "background", label: "Background Color" },
+    { key: "text", label: "Text Color" },
+  ];
+
+  const canEdit = Boolean(targetSchoolId);
+
+  return (
+    <Card>
+      <h3 className="font-semibold text-base">Teacher ID Card Design</h3>
+      <p className="text-sm text-muted-foreground mt-1 mb-4">
+        Customize the portrait staff card colors. Student ID cards are unchanged.
+      </p>
+      {showSchoolPicker && (
+        <div className="mb-4 max-w-md">
+          <Field label="School">
+            <Select
+              value={selectedSchoolId}
+              onChange={(e) => setSelectedSchoolId(e.target.value)}
+              disabled={schoolsQuery.loading}
+            >
+              <option value="">Select a school…</option>
+              {schoolOptions.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                  {s.status && s.status !== "ACTIVE" ? ` (${s.status})` : ""}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          {!selectedSchoolId && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Choose a school to load and edit its teacher ID card colors.
+            </p>
+          )}
+        </div>
+      )}
+      {!canEdit ? (
+        showSchoolPicker ? null : (
+          <p className="text-sm text-muted-foreground">School context is required to edit teacher card design.</p>
+        )
+      ) : settings.loading ? (
+        <Skeleton className="h-40" />
+      ) : (
+        <div className="grid lg:grid-cols-2 gap-6">
+          <div className="space-y-3">
+            {fields.map((f) => (
+              <Field key={f.key} label={f.label}>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={/^#[0-9a-fA-F]{6}$/.test(colors[f.key]) ? colors[f.key] : "#115e59"}
+                    onChange={(e) => set(f.key, e.target.value)}
+                    className="size-10 rounded border cursor-pointer bg-transparent"
+                    aria-label={f.label}
+                  />
+                  <TextInput
+                    value={colors[f.key]}
+                    onChange={(e) => set(f.key, e.target.value)}
+                    placeholder="#115e59"
+                    className="font-mono text-sm"
+                  />
+                </div>
+              </Field>
+            ))}
+            <div className="flex flex-wrap gap-2 pt-2">
+              <Button onClick={save} loading={saving} disabled={!canEdit}>
+                Save Changes
+              </Button>
+              <Button variant="outline" onClick={reset} loading={resetting} disabled={!canEdit}>
+                Reset to Default
+              </Button>
+            </div>
+          </div>
+          <div className="flex justify-center items-start overflow-auto">
+            <TeacherIdCardPair model={previewModel} template={template} />
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }

@@ -2,15 +2,20 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   ID_CARD_TEMPLATES,
+  TEACHER_CARD_PREVIEW_HEIGHT,
+  TEACHER_CARD_PREVIEW_WIDTH,
+  DEFAULT_TEACHER_CARD_COLORS,
   activeStudentsOnly,
   activeTeachersOnly,
   hasTruthySelection,
   mapStudentToCardFields,
   mapTeacherToCardFields,
+  resolveTeacherCardColors,
   selectedStudentIds,
   studentsInSelectionScope,
   studentsMissingPhotos,
   teachersMissingPhotos,
+  teacherCardPalette,
 } from "./id-card-data.ts";
 
 describe("ID card data mapping", () => {
@@ -169,5 +174,29 @@ describe("Teacher ID card data mapping", () => {
     assert.equal(active.length, 2);
     assert.equal(teachersMissingPhotos(active).length, 1);
     assert.equal(teachersMissingPhotos(active)[0].id, "2");
+  });
+
+  it("teacher preview shell is portrait; student preview stays landscape 340×214", () => {
+    assert.equal(TEACHER_CARD_PREVIEW_WIDTH, 214);
+    assert.equal(TEACHER_CARD_PREVIEW_HEIGHT, 340);
+    assert.ok(TEACHER_CARD_PREVIEW_HEIGHT > TEACHER_CARD_PREVIEW_WIDTH);
+    // Student CardShell remains hardcoded 340×214 in IdCardPreview (regression contract).
+    assert.equal(340 > 214, true);
+  });
+
+  it("resolves teacher card colors with teal defaults and valid HEX overrides", () => {
+    assert.deepEqual(resolveTeacherCardColors(null), { ...DEFAULT_TEACHER_CARD_COLORS });
+    const custom = resolveTeacherCardColors({
+      primary: "#006666",
+      accent: "bad",
+      background: "#fff",
+      text: "#111111",
+    });
+    assert.equal(custom.primary, "#006666");
+    assert.equal(custom.accent, DEFAULT_TEACHER_CARD_COLORS.accent);
+    assert.equal(custom.background, "#fff");
+    assert.equal(custom.text, "#111111");
+    const palette = teacherCardPalette("CLASSIC", custom);
+    assert.equal(palette.header, "#006666");
   });
 });

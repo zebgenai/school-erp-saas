@@ -19,6 +19,12 @@ import {
   missingPhotoTeachers,
   TeacherIdCardView,
 } from './teacher-card-payload';
+import {
+  DEFAULT_TEACHER_ID_CARD_COLORS,
+  normalizeHexColor,
+  resolveTeacherIdCardColors,
+} from './teacher-id-card-colors';
+import { UpdateTeacherIdCardSettingsDto } from './dto/update-teacher-id-card-settings.dto';
 
 type TeacherLike = {
   id: string;
@@ -40,6 +46,10 @@ type SchoolLike = {
   email?: string | null;
   domain?: string | null;
   idCardTemplate: IdCardTemplate;
+  teacherIdCardPrimaryColor?: string | null;
+  teacherIdCardAccentColor?: string | null;
+  teacherIdCardBackgroundColor?: string | null;
+  teacherIdCardTextColor?: string | null;
 };
 
 @Injectable()
@@ -116,6 +126,7 @@ export class TeacherIdCardsService {
           phone: school.phone,
           email: school.email,
           domain: school.domain,
+          teacherCardColors: resolveTeacherIdCardColors(school),
         },
         template: school.idCardTemplate,
         historyCount: await this.prisma.teacherIdCard.count({
@@ -420,6 +431,122 @@ export class TeacherIdCardsService {
     const school = await this.prisma.school.findUnique({ where: { id: schoolId } });
     if (!school) throw new NotFoundException('School not found');
     return school;
+  }
+
+  /**
+   * Returns resolved teacher ID card design colors for a school.
+   * Never creates cards or changes QR tokens.
+   */
+  async getTeacherSettings(currentUser: CurrentUser, schoolId?: string) {
+    const id = this.requireSchoolId(currentUser, schoolId);
+    const school = await this.loadSchool(id);
+    const colors = resolveTeacherIdCardColors(school);
+    return {
+      schoolId: school.id,
+      colors,
+      defaults: DEFAULT_TEACHER_ID_CARD_COLORS,
+      isCustom:
+        Boolean(normalizeHexColor(school.teacherIdCardPrimaryColor)) ||
+        Boolean(normalizeHexColor(school.teacherIdCardAccentColor)) ||
+        Boolean(normalizeHexColor(school.teacherIdCardBackgroundColor)) ||
+        Boolean(normalizeHexColor(school.teacherIdCardTextColor)),
+    };
+  }
+
+  /**
+   * Updates teacher ID card design colors. Does not touch TeacherIdCard rows or QR tokens.
+   */
+  async updateTeacherSettings(dto: UpdateTeacherIdCardSettingsDto, currentUser: CurrentUser) {
+    if (
+      currentUser.role !== UserRole.SUPER_ADMIN &&
+      currentUser.role !== UserRole.SCHOOL_ADMIN
+    ) {
+      throw new ForbiddenException('Only school administrators can update teacher ID card design');
+    }
+    const schoolId = this.requireSchoolId(currentUser, dto.schoolId);
+    const school = await this.loadSchool(schoolId);
+
+    // Reject invalid HEX before writing (DTO regex catches most; defend in service too).
+    for (const [key, raw] of [
+      ['primaryColor', dto.primaryColor],
+      ['accentColor', dto.accentColor],
+      ['backgroundColor', dto.backgroundColor],
+      ['textColor', dto.textColor],
+    ] as const) {
+      if (raw != null && raw !== '' && !normalizeHexColor(raw)) {
+        throw new BadRequestException(`${key} must be a HEX color (#RGB or #RRGGBB)`);
+      }
+    }
+
+    const data: Prisma.SchoolUpdateInput = {};
+    if (dto.primaryColor !== undefined) {
+      data.teacherIdCardPrimaryColor =
+        dto.primaryColor === null || dto.primaryColor === ''
+          ? null
+          : normalizeHexColor(dto.primaryColor);
+    }
+    if (dto.accentColor !== undefined) {
+      data.teacherIdCardAccentColor =
+        dto.accentColor === null || dto.accentColor === ''
+          ? null
+          : normalizeHexColor(dto.accentColor);
+    }
+    if (dto.backgroundColor !== undefined) {
+      data.teacherIdCardBackgroundColor =
+        dto.backgroundColor === null || dto.backgroundColor === ''
+          ? null
+          : normalizeHexColor(dto.backgroundColor);
+    }
+    if (dto.textColor !== undefined) {
+      data.teacherIdCardTextColor =
+        dto.textColor === null || dto.textColor === ''
+          ? null
+          : normalizeHexColor(dto.textColor);
+    }
+
+    const updated =
+      Object.keys(data).length === 0
+        ? school
+        : await this.prisma.school.update({ where: { id: schoolId }, data });
+
+    const colors = resolveTeacherIdCardColors(updated);
+    return {
+      schoolId: updated.id,
+      colors,
+      defaults: DEFAULT_TEACHER_ID_CARD_COLORS,
+      isCustom:
+        Boolean(normalizeHexColor(updated.teacherIdCardPrimaryColor)) ||
+        Boolean(normalizeHexColor(updated.teacherIdCardAccentColor)) ||
+        Boolean(normalizeHexColor(updated.teacherIdCardBackgroundColor)) ||
+        Boolean(normalizeHexColor(updated.teacherIdCardTextColor)),
+    };
+  }
+
+  /** Clear all custom teacher card colors back to defaults. */
+  async resetTeacherSettings(currentUser: CurrentUser, schoolId?: string) {
+    if (
+      currentUser.role !== UserRole.SUPER_ADMIN &&
+      currentUser.role !== UserRole.SCHOOL_ADMIN
+    ) {
+      throw new ForbiddenException('Only school administrators can update teacher ID card design');
+    }
+    const id = this.requireSchoolId(currentUser, schoolId);
+    await this.loadSchool(id);
+    const updated = await this.prisma.school.update({
+      where: { id },
+      data: {
+        teacherIdCardPrimaryColor: null,
+        teacherIdCardAccentColor: null,
+        teacherIdCardBackgroundColor: null,
+        teacherIdCardTextColor: null,
+      },
+    });
+    return {
+      schoolId: updated.id,
+      colors: resolveTeacherIdCardColors(updated),
+      defaults: DEFAULT_TEACHER_ID_CARD_COLORS,
+      isCustom: false,
+    };
   }
 
   requireSchoolId(currentUser: CurrentUser, schoolId?: string): string {

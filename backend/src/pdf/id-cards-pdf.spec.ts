@@ -216,6 +216,12 @@ describe('PdfService.generateTeacherIdCards', () => {
                 phone: null,
                 email: null,
                 domain: null,
+                teacherCardColors: {
+                  primary: '#115e59',
+                  accent: '#2dd4bf',
+                  background: '#ffffff',
+                  text: '#134e4a',
+                },
               },
               template: 'CLASSIC',
               qrToken: '',

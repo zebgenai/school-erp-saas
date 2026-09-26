@@ -130,3 +130,86 @@ export function cardPalette(template: IdCardTemplateId, themeColor?: string | nu
       return { header: "#1e3a5f", accent: "#c9a227", text: "#1e293b", muted: "#64748b", bg: "#ffffff", back: "#1e3a5f", backText: "#ffffff" };
   }
 }
+
+/** Portrait preview shell size (matches CR80 portrait aspect). Student CardShell stays 340×214. */
+export const TEACHER_CARD_PREVIEW_WIDTH = 214;
+export const TEACHER_CARD_PREVIEW_HEIGHT = 340;
+
+export const DEFAULT_TEACHER_CARD_COLORS = {
+  primary: "#115e59",
+  accent: "#2dd4bf",
+  background: "#ffffff",
+  text: "#134e4a",
+} as const;
+
+export type TeacherCardColors = {
+  primary: string;
+  accent: string;
+  background: string;
+  text: string;
+};
+
+export function resolveTeacherCardColors(
+  input?: Partial<TeacherCardColors> | null,
+): TeacherCardColors {
+  const hex = (v?: string | null, fallback?: string) =>
+    v && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v) ? v : (fallback ?? "");
+  return {
+    primary: hex(input?.primary, DEFAULT_TEACHER_CARD_COLORS.primary),
+    accent: hex(input?.accent, DEFAULT_TEACHER_CARD_COLORS.accent),
+    background: hex(input?.background, DEFAULT_TEACHER_CARD_COLORS.background),
+    text: hex(input?.text, DEFAULT_TEACHER_CARD_COLORS.text),
+  };
+}
+
+/** Teacher palette driven by school teacher-card colors (not student themeColor alone). */
+export function teacherCardPalette(template: IdCardTemplateId, colors: TeacherCardColors) {
+  const { primary, accent, background, text } = colors;
+  const muted = "#5b7c7a";
+  switch (template) {
+    case "MODERN":
+      return {
+        header: primary,
+        accent,
+        text,
+        muted,
+        bg: background,
+        back: primary,
+        backText: "#ffffff",
+        badge: primary,
+      };
+    case "PREMIUM":
+      return {
+        header: "#0f172a",
+        accent,
+        text,
+        muted,
+        bg: background === "#ffffff" ? "#f0fdfa" : background,
+        back: "#0f172a",
+        backText: "#ccfbf1",
+        badge: accent,
+      };
+    case "MINIMAL":
+      return {
+        header: "#ffffff",
+        accent,
+        text,
+        muted: "#94a3b8",
+        bg: background,
+        back: "#f8fafc",
+        backText: text,
+        badge: primary,
+      };
+    default:
+      return {
+        header: primary,
+        accent,
+        text,
+        muted,
+        bg: background,
+        back: primary,
+        backText: "#ffffff",
+        badge: primary,
+      };
+  }
+}

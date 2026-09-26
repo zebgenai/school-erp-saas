@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -10,6 +10,7 @@ import { PreviewIdCardsDto } from './dto/preview-id-cards.dto';
 import { PreviewTeacherIdCardsDto } from './dto/preview-teacher-id-cards.dto';
 import { IdCardsQueryDto } from './dto/id-cards-query.dto';
 import { TeacherIdCardsQueryDto } from './dto/teacher-id-cards-query.dto';
+import { UpdateTeacherIdCardSettingsDto } from './dto/update-teacher-id-card-settings.dto';
 import { IdCardsService } from './id-cards.service';
 import { TeacherIdCardsService } from './teacher-id-cards.service';
 
@@ -70,6 +71,40 @@ export class IdCardsController {
   }
 
   // ── Teacher ID cards (must be registered before student/:studentId to avoid route clashes) ──
+
+  @ApiOperation({
+    summary: 'Get teacher ID card design colors for the school (defaults if unset)',
+  })
+  @Roles(UserRole.SUPER_ADMIN, UserRole.SCHOOL_ADMIN)
+  @Get('teacher-settings')
+  getTeacherSettings(
+    @CurrentUserDecorator() user: CurrentUser,
+    @Query('schoolId') schoolId?: string,
+  ) {
+    return this.teacherIdCardsService.getTeacherSettings(user, schoolId);
+  }
+
+  @ApiOperation({
+    summary: 'Update teacher ID card design colors (does not alter issued cards or QR tokens)',
+  })
+  @Roles(UserRole.SUPER_ADMIN, UserRole.SCHOOL_ADMIN)
+  @Patch('teacher-settings')
+  updateTeacherSettings(
+    @Body() dto: UpdateTeacherIdCardSettingsDto,
+    @CurrentUserDecorator() user: CurrentUser,
+  ) {
+    return this.teacherIdCardsService.updateTeacherSettings(dto, user);
+  }
+
+  @ApiOperation({ summary: 'Reset teacher ID card design colors to defaults' })
+  @Roles(UserRole.SUPER_ADMIN, UserRole.SCHOOL_ADMIN)
+  @Post('teacher-settings/reset')
+  resetTeacherSettings(
+    @CurrentUserDecorator() user: CurrentUser,
+    @Body() body: { schoolId?: string } = {},
+  ) {
+    return this.teacherIdCardsService.resetTeacherSettings(user, body.schoolId);
+  }
 
   @ApiOperation({ summary: 'List issued active teacher ID cards for the school' })
   @Roles(...VIEW_ROLES)

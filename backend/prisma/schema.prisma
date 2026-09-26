@@ -137,6 +137,12 @@ model School {
   logoUrl    String?
   themeColor String?
 
+  /// Teacher ID card design colors (HEX). Null → professional teal defaults.
+  teacherIdCardPrimaryColor     String?
+  teacherIdCardAccentColor      String?
+  teacherIdCardBackgroundColor  String?
+  teacherIdCardTextColor        String?
+
   idCardTemplate         IdCardTemplate @default(CLASSIC)
   /// IANA timezone for school-local attendance dates/cutoffs (default Pakistan).
   timezone               String         @default("Asia/Karachi")

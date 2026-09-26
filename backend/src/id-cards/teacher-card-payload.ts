@@ -1,4 +1,8 @@
 import { IdCardTemplate } from '@prisma/client';
+import {
+  resolveTeacherIdCardColors,
+  type TeacherIdCardColors,
+} from './teacher-id-card-colors';
 
 export type TeacherCardSource = {
   id: string;
@@ -19,6 +23,10 @@ export type SchoolCardSource = {
   email?: string | null;
   domain?: string | null;
   idCardTemplate?: IdCardTemplate | null;
+  teacherIdCardPrimaryColor?: string | null;
+  teacherIdCardAccentColor?: string | null;
+  teacherIdCardBackgroundColor?: string | null;
+  teacherIdCardTextColor?: string | null;
 };
 
 export type TeacherCardRecordSource = {
@@ -55,6 +63,8 @@ export type TeacherIdCardView = {
     phone: string | null;
     email: string | null;
     domain: string | null;
+    /** Resolved teacher-card design colors (never null — defaults applied). */
+    teacherCardColors: TeacherIdCardColors;
   };
   template: IdCardTemplate;
   qrToken: string;
@@ -106,6 +116,7 @@ export function mapTeacherIdCardView(input: {
       phone: school.phone ?? null,
       email: school.email ?? null,
       domain: school.domain ?? null,
+      teacherCardColors: resolveTeacherIdCardColors(school),
     },
     template: input.template ?? school.idCardTemplate ?? IdCardTemplate.CLASSIC,
     qrToken: card.qrToken,
