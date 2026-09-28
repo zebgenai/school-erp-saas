@@ -15,6 +15,8 @@ import { CurrentUserDecorator } from '../common/decorators/current-user.decorato
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser } from '../common/types/current-user.type';
+import { FeatureGuard } from '../features/feature.guard';
+import { RequireFeature } from '../features/require-feature.decorator';
 import { CreateBulkInvoicesDto } from './dto/create-bulk-invoices.dto';
 import { CreateFeeInvoiceDto } from './dto/create-fee-invoice.dto';
 import { CreateFeeStructureDto } from './dto/create-fee-structure.dto';
@@ -23,7 +25,8 @@ import { RecordPaymentDto } from './dto/record-payment.dto';
 import { UpdateFeeStructureDto } from './dto/update-fee-structure.dto';
 import { FeesService } from './fees.service';
 
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, FeatureGuard)
+@RequireFeature('fees')
 @Controller('fees')
 export class FeesController {
   constructor(private readonly feesService: FeesService) {}

@@ -15,6 +15,8 @@ import { CurrentUserDecorator } from '../common/decorators/current-user.decorato
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser } from '../common/types/current-user.type';
+import { FeatureGuard } from '../features/feature.guard';
+import { RequireFeature } from '../features/require-feature.decorator';
 import { CreateExpenseCategoryDto } from './dto/create-expense-category.dto';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { ExpenseQueryDto } from './dto/expense-query.dto';
@@ -22,7 +24,8 @@ import { UpdateExpenseCategoryDto } from './dto/update-expense-category.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { ExpensesService } from './expenses.service';
 
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, FeatureGuard)
+@RequireFeature('expenses')
 @Controller('expenses')
 export class ExpensesController {
   constructor(private readonly expensesService: ExpensesService) {}

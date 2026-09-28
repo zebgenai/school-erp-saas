@@ -23,6 +23,8 @@ import { CurrentUserDecorator } from '../common/decorators/current-user.decorato
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser } from '../common/types/current-user.type';
+import { FeatureGuard } from '../features/feature.guard';
+import { RequireFeature } from '../features/require-feature.decorator';
 import {
   CreateHomeworkDto,
   GradeHomeworkDto,
@@ -78,7 +80,8 @@ const homeworkFileFilter = (_req: any, file: Express.Multer.File, cb: any) => {
 
 @ApiTags('Homework')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, FeatureGuard)
+@RequireFeature('homework')
 @Controller('homework')
 export class HomeworkController {
   constructor(private readonly homework: HomeworkService) {}

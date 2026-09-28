@@ -15,6 +15,8 @@ import { CurrentUserDecorator } from '../common/decorators/current-user.decorato
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser } from '../common/types/current-user.type';
+import { FeatureGuard } from '../features/feature.guard';
+import { RequireFeature } from '../features/require-feature.decorator';
 import { AssignStudentDto } from './dto/assign-student.dto';
 import { CreateRouteDto } from './dto/create-route.dto';
 import { CreateVehicleDto } from './dto/create-vehicle.dto';
@@ -23,7 +25,8 @@ import { UpdateRouteDto } from './dto/update-route.dto';
 import { UpdateVehicleDto } from './dto/update-vehicle.dto';
 import { TransportService } from './transport.service';
 
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, FeatureGuard)
+@RequireFeature('transport')
 @Controller('transport')
 export class TransportController {
   constructor(private readonly transportService: TransportService) {}

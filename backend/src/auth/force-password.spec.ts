@@ -56,6 +56,7 @@ function makeAuthService(prisma: any) {
     rolesStub() as any,
     notificationsStub() as any,
     { dispatch: () => undefined, emit: async () => undefined } as any,
+    { getEnabledFeatureKeys: async () => ['attendance', 'communication', 'students'] } as any,
   );
 }
 

@@ -16,6 +16,8 @@ import { CurrentUserDecorator } from '../common/decorators/current-user.decorato
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser } from '../common/types/current-user.type';
+import { FeatureGuard } from '../features/feature.guard';
+import { RequireFeature } from '../features/require-feature.decorator';
 import { BulkMarksDto } from './dto/bulk-marks.dto';
 import { CreateExamDto } from './dto/create-exam.dto';
 import { CreateExamSubjectDto } from './dto/create-exam-subject.dto';
@@ -39,7 +41,8 @@ const MARK_ROLES = [UserRole.SUPER_ADMIN, UserRole.SCHOOL_ADMIN, UserRole.TEACHE
 
 @ApiTags('Exams')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, FeatureGuard)
+@RequireFeature('exams')
 @Controller('exams')
 export class ExamsController {
   constructor(private readonly examsService: ExamsService) {}

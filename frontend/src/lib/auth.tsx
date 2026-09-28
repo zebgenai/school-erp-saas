@@ -19,6 +19,8 @@ export type AuthUser = {
   schoolName?: string;
   forcePasswordChange?: boolean;
   permissions?: Record<string, boolean>;
+  /** Effective feature keys for the user's school (or globally enabled when no school). */
+  enabledFeatures?: string[];
   [k: string]: unknown;
 };
 

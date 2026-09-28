@@ -15,12 +15,15 @@ import { CurrentUserDecorator } from '../common/decorators/current-user.decorato
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser } from '../common/types/current-user.type';
+import { FeatureGuard } from '../features/feature.guard';
+import { RequireFeature } from '../features/require-feature.decorator';
 import { CommunicationService } from './communication.service';
 import { CreateNoticeDto } from './dto/create-notice.dto';
 import { NoticeQueryDto } from './dto/notice-query.dto';
 import { UpdateNoticeDto } from './dto/update-notice.dto';
 
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, FeatureGuard)
+@RequireFeature('communication')
 @Controller('communication')
 export class CommunicationController {
   constructor(private readonly communicationService: CommunicationService) {}

@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AuditLogsModule } from '../audit-logs/audit-logs.module';
+import { FeaturesModule } from '../features/features.module';
 import { PlatformSettingsModule } from '../platform-settings/platform-settings.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { parseRedisConnection } from '../whatsapp/redis-connection';
@@ -31,6 +32,7 @@ import {
     PrismaModule,
     PlatformSettingsModule,
     AuditLogsModule,
+    FeaturesModule,
     ScheduleModule.forRoot(),
     ConfigModule,
     WhatsAppModule,

@@ -15,13 +15,16 @@ import { CurrentUserDecorator } from '../common/decorators/current-user.decorato
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser } from '../common/types/current-user.type';
+import { FeatureGuard } from '../features/feature.guard';
+import { RequireFeature } from '../features/require-feature.decorator';
 import { GeneratePayrollDto } from './dto/generate-payroll.dto';
 import { MarkPaidDto } from './dto/mark-paid.dto';
 import { PayrollQueryDto } from './dto/payroll-query.dto';
 import { UpdatePayrollDto } from './dto/update-payroll.dto';
 import { PayrollService } from './payroll.service';
 
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, FeatureGuard)
+@RequireFeature('payroll')
 @Controller('payroll')
 export class PayrollController {
   constructor(private readonly payrollService: PayrollService) {}

@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, GraduationCap, CalendarCheck, Receipt,
   ClipboardList, BarChart3, Settings, LogOut, Menu, X, ChevronLeft, School,
   UserCog, Briefcase, Wallet, BookOpen, Calendar, Bus, Megaphone, Building2, HeartHandshake,
-  DollarSign, Activity, ShieldCheck, Globe, KeyRound, CalendarDays, CreditCard, QrCode,
+  DollarSign, Activity, ShieldCheck, Globe, KeyRound, CalendarDays, CreditCard, QrCode, Layers,
 } from "lucide-react";
 import { resolveFileUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -18,6 +18,7 @@ import {
   isPlatformStaff,
   resolveAppNavKind,
   roleDisplayName,
+  featureKeyForPath,
   type Permission,
 } from "@/lib/permissions";
 import { FORCE_CHANGE_PASSWORD_PATH, shouldRedirectForcedUser } from "@/lib/force-password";
@@ -81,6 +82,7 @@ const superAdminNavGroups: NavGroup[] = [
   { label: "Management", items: [
     { to: "/super-admin", label: "Schools", icon: Building2, search: "?tab=schools" },
     { to: "/super-admin", label: "Role Management", icon: KeyRound, search: "?tab=roles" },
+    { to: "/super-admin", label: "Feature Control", icon: Layers, search: "?tab=features", ownerOnly: true },
     { to: "/super-admin", label: "Platform Team", icon: UserCog, search: "?tab=team", ownerOnly: true },
     { to: "/super-admin", label: "Subscription Plans", icon: Receipt, search: "?tab=plans" },
     { to: "/super-admin", label: "Billing", icon: DollarSign, search: "?tab=billing" },
@@ -133,7 +135,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { user, loading, logout } = useAuth();
   const router = useRouter();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const { can, canRoute } = usePermissions();
+  const { can, canRoute, hasFeature } = usePermissions();
   const host = useAppHost();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -235,14 +237,17 @@ export function AppShell({ children }: { children: ReactNode }) {
               ? teacherNavGroups
               : schoolNavGroups;
 
-  const navGroups = isPortalOnly
-    ? baseGroups
-    : baseGroups
-        .map((group) => ({
-          ...group,
-          items: group.items.filter((item) => !item.permission || can(item.permission)),
-        }))
-        .filter((group) => group.items.length > 0);
+  const navGroups = baseGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => {
+        if (!isPortalOnly && item.permission && !can(item.permission)) return false;
+        const featureKey = featureKeyForPath(item.to);
+        if (featureKey && !hasFeature(featureKey)) return false;
+        return true;
+      }),
+    }))
+    .filter((group) => group.items.length > 0);
 
   const schoolName = isSuperAdmin && !user.schoolId
     ? "Clever Campus Platform"

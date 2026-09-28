@@ -39,6 +39,7 @@ import { OnlineClassesModule } from './online-classes/online-classes.module';
 import { AcademicCalendarModule } from './academic-calendar/academic-calendar.module';
 import { TenantModule } from './common/tenant/tenant.module';
 import { IdCardsModule } from './id-cards/id-cards.module';
+import { FeaturesModule } from './features/features.module';
 
 @Injectable()
 class AppThrottlerGuard extends ThrottlerGuard {
@@ -96,6 +97,7 @@ class AppThrottlerGuard extends ThrottlerGuard {
     HomeworkModule,
     OnlineClassesModule,
     AcademicCalendarModule,
+    FeaturesModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: AppThrottlerGuard }],
 })

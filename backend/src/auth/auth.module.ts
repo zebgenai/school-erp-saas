@@ -6,6 +6,7 @@ import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RolesModule } from '../roles/roles.module';
+import { FeaturesModule } from '../features/features.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
@@ -17,6 +18,7 @@ import { JwtStrategy } from './jwt.strategy';
     AuditLogsModule,
     NotificationsModule,
     RolesModule,
+    FeaturesModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

@@ -16,6 +16,8 @@ import { CurrentUserDecorator } from '../common/decorators/current-user.decorato
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser } from '../common/types/current-user.type';
+import { FeatureGuard } from '../features/feature.guard';
+import { RequireFeature } from '../features/require-feature.decorator';
 import {
   CreateOnlineClassDto,
   LinkHomeworkDto,
@@ -39,7 +41,8 @@ const MANAGE_ROLES = [
 
 @ApiTags('Online Classes')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, FeatureGuard)
+@RequireFeature('online-classes')
 @Controller('online-classes')
 export class OnlineClassesController {
   constructor(private readonly onlineClasses: OnlineClassesService) {}

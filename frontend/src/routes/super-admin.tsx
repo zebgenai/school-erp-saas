@@ -5,7 +5,7 @@ import {
   BarChart3, Settings, ShieldCheck, AlertTriangle, CheckCircle, XCircle,
   Plus, Edit2, Trash2, Eye, Play, Pause, RefreshCw, LogIn, Search,
   ChevronDown, X, DollarSign, Clock, Activity, HeartHandshake,
-  UserPlus, KeyRound, UserCog, Lock, Unlock, Ban, UserCheck, ArrowLeft,
+  UserPlus, KeyRound, UserCog, Lock, Unlock, Ban, UserCheck, ArrowLeft, Layers,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -22,6 +22,7 @@ import { useAuth } from "@/lib/auth";
 import { PASSWORD_POLICY_MESSAGE, isStrongPassword } from "@/lib/force-password";
 import { RolesManagementTab } from "@/components/super-admin/RolesManagementTab";
 import { PlatformTeamTab } from "@/components/super-admin/PlatformTeamTab";
+import { FeaturesControlTab } from "@/components/super-admin/FeaturesControlTab";
 import { isPlatformStaff } from "@/lib/permissions";
 
 export const Route = createFileRoute("/super-admin")({
@@ -29,7 +30,7 @@ export const Route = createFileRoute("/super-admin")({
   component: () => <AppShell><SuperAdminPage /></AppShell>,
 });
 
-type Tab = "dashboard" | "schools" | "roles" | "team" | "plans" | "billing" | "audit" | "settings";
+type Tab = "dashboard" | "schools" | "roles" | "features" | "team" | "plans" | "billing" | "audit" | "settings";
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
@@ -38,9 +39,9 @@ function SuperAdminPage() {
   const initialTab = (): Tab => {
     if (typeof window === "undefined") return "dashboard";
     const t = new URLSearchParams(window.location.search).get("tab");
-    const valid: Tab[] = ["dashboard", "schools", "roles", "team", "plans", "billing", "audit", "settings"];
+    const valid: Tab[] = ["dashboard", "schools", "roles", "features", "team", "plans", "billing", "audit", "settings"];
     const chosen = (valid.includes(t as Tab) ? t : "dashboard") as Tab;
-    const ownerOnly = chosen === "team" || chosen === "settings";
+    const ownerOnly = chosen === "team" || chosen === "settings" || chosen === "features";
     if (ownerOnly && user?.role !== "SUPER_ADMIN") return "dashboard";
     return chosen;
   };
@@ -70,6 +71,7 @@ function SuperAdminPage() {
     { id: "dashboard", label: "Dashboard", icon: BarChart3 },
     { id: "schools", label: "Schools", icon: Building2 },
     { id: "roles", label: "Role Management", icon: KeyRound },
+    { id: "features", label: "Feature Control", icon: Layers, ownerOnly: true },
     { id: "team", label: "Platform Team", icon: UserCog, ownerOnly: true },
     { id: "plans", label: "Plans", icon: Receipt },
     { id: "billing", label: "Billing", icon: DollarSign },
@@ -106,6 +108,7 @@ function SuperAdminPage() {
       {tab === "dashboard" && <DashboardTab />}
       {tab === "schools" && <SchoolsTab />}
       {tab === "roles" && <RolesManagementTab />}
+      {tab === "features" && <FeaturesControlTab />}
       {tab === "team" && isOwner && <PlatformTeamTab />}
       {tab === "plans" && <PlansTab />}
       {tab === "billing" && <BillingTab />}

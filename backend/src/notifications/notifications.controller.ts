@@ -36,6 +36,8 @@ import { CurrentUserDecorator } from '../common/decorators/current-user.decorato
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser } from '../common/types/current-user.type';
+import { FeatureGuard } from '../features/feature.guard';
+import { RequireFeature } from '../features/require-feature.decorator';
 import { AttendanceWhatsAppService } from './attendance-whatsapp.service';
 import { NotificationAnalyticsService } from './notification-analytics.service';
 import { NotificationCampaignService } from './notification-campaign.service';
@@ -185,7 +187,7 @@ class PushTokenDto {
 
 @ApiTags('Notifications')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, FeatureGuard)
 @Controller('notifications')
 export class NotificationsController {
   constructor(
@@ -266,6 +268,7 @@ export class NotificationsController {
 
   @ApiOperation({ summary: 'List notification templates' })
   @Roles(...ADMIN_ROLES)
+  @RequireFeature('notifications')
   @Get('templates')
   listTemplates(
     @CurrentUserDecorator() user: CurrentUser,
@@ -277,6 +280,7 @@ export class NotificationsController {
 
   @ApiOperation({ summary: 'Template placeholder keys' })
   @Roles(...ADMIN_ROLES)
+  @RequireFeature('notifications')
   @Get('templates/placeholders')
   placeholders() {
     return { placeholders: this.templates.placeholders() };
@@ -284,6 +288,7 @@ export class NotificationsController {
 
   @ApiOperation({ summary: 'Create notification template' })
   @Roles(...ADMIN_ROLES)
+  @RequireFeature('notifications')
   @Post('templates')
   createTemplate(@CurrentUserDecorator() user: CurrentUser, @Body() body: CreateTemplateDto) {
     return this.templates.create(user, body);
@@ -291,6 +296,7 @@ export class NotificationsController {
 
   @ApiOperation({ summary: 'Update notification template' })
   @Roles(...ADMIN_ROLES)
+  @RequireFeature('notifications')
   @Put('templates/:id')
   updateTemplate(
     @Param('id') id: string,
@@ -302,6 +308,7 @@ export class NotificationsController {
 
   @ApiOperation({ summary: 'Delete notification template' })
   @Roles(...ADMIN_ROLES)
+  @RequireFeature('notifications')
   @Delete('templates/:id')
   deleteTemplate(@Param('id') id: string, @CurrentUserDecorator() user: CurrentUser) {
     return this.templates.remove(id, user);
@@ -311,6 +318,7 @@ export class NotificationsController {
 
   @ApiOperation({ summary: 'Compose / schedule a notification campaign' })
   @Roles(...ADMIN_ROLES)
+  @RequireFeature('notifications')
   @Post('compose')
   compose(@CurrentUserDecorator() user: CurrentUser, @Body() body: ComposeDto) {
     return this.campaigns.compose(user, body as any);
@@ -318,6 +326,7 @@ export class NotificationsController {
 
   @ApiOperation({ summary: 'List notification campaigns' })
   @Roles(...ADMIN_ROLES)
+  @RequireFeature('notifications')
   @Get('campaigns')
   listCampaigns(
     @CurrentUserDecorator() user: CurrentUser,
@@ -334,6 +343,7 @@ export class NotificationsController {
 
   @ApiOperation({ summary: 'Cancel a scheduled campaign' })
   @Roles(...ADMIN_ROLES)
+  @RequireFeature('notifications')
   @Patch('campaigns/:id/cancel')
   cancelCampaign(@Param('id') id: string, @CurrentUserDecorator() user: CurrentUser) {
     return this.campaigns.cancel(id, user);
@@ -341,6 +351,7 @@ export class NotificationsController {
 
   @ApiOperation({ summary: 'Retry failed deliveries for a campaign' })
   @Roles(...ADMIN_ROLES)
+  @RequireFeature('notifications')
   @Post('campaigns/:id/retry')
   retryCampaign(@Param('id') id: string, @CurrentUserDecorator() user: CurrentUser) {
     return this.campaigns.retryFailed(id, user);
@@ -350,6 +361,7 @@ export class NotificationsController {
 
   @ApiOperation({ summary: 'Dashboard notification widgets' })
   @Roles(...ADMIN_ROLES)
+  @RequireFeature('notifications')
   @Get('stats/widgets')
   widgets(@CurrentUserDecorator() user: CurrentUser) {
     return this.analytics.dashboardWidgets(user);
@@ -357,6 +369,7 @@ export class NotificationsController {
 
   @ApiOperation({ summary: 'Notification analytics report' })
   @Roles(...ADMIN_ROLES)
+  @RequireFeature('notifications')
   @Get('stats/analytics')
   analyticsReport(
     @CurrentUserDecorator() user: CurrentUser,
@@ -371,6 +384,7 @@ export class NotificationsController {
 
   @ApiOperation({ summary: 'Platform-wide notification usage (Super Admin)' })
   @Roles(UserRole.SUPER_ADMIN)
+  @RequireFeature('notifications')
   @Get('stats/platform')
   platformStats() {
     return this.analytics.platformStats();
@@ -378,6 +392,7 @@ export class NotificationsController {
 
   @ApiOperation({ summary: 'Outbound channel configuration status' })
   @Roles(...ADMIN_ROLES)
+  @RequireFeature('notifications')
   @Get('channels/status')
   channelStatus() {
     return this.notifications.channelStatus();
@@ -387,6 +402,7 @@ export class NotificationsController {
 
   @ApiOperation({ summary: 'Notification delivery audit log' })
   @Roles(...ADMIN_ROLES)
+  @RequireFeature('notifications')
   @Get('logs/audit')
   auditLogs(
     @CurrentUserDecorator() user: CurrentUser,
@@ -413,6 +429,7 @@ export class NotificationsController {
 
   @ApiOperation({ summary: 'WhatsApp attendance absence notification log (school-scoped)' })
   @Roles(...ADMIN_ROLES)
+  @RequireFeature('notifications')
   @Get('logs/whatsapp-attendance')
   whatsappAttendanceLogs(
     @CurrentUserDecorator() user: CurrentUser,

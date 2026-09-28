@@ -19,6 +19,8 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { CorsHeadersInterceptor } from '../common/interceptors/cors-headers.interceptor';
 import { CurrentUser } from '../common/types/current-user.type';
 import { sendAttachment } from '../common/utils/send-attachment';
+import { FeatureGuard } from '../features/feature.guard';
+import { FeatureSchoolFrom, RequireFeature } from '../features/require-feature.decorator';
 import { DashboardQueryDto } from '../reports/dto/dashboard-query.dto';
 import { InvoiceArchiveDto } from './dto/invoice-archive.dto';
 import { IdCardsPdfDto } from './dto/id-cards-pdf.dto';
@@ -83,7 +85,7 @@ const FINANCE_ROLES = [
 
 @ApiTags('PDF')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, FeatureGuard)
 @UseInterceptors(CorsHeadersInterceptor)
 @Controller('pdf')
 export class PdfController {
@@ -91,6 +93,8 @@ export class PdfController {
 
   @ApiOperation({ summary: 'Download fee invoice PDF' })
   @Roles(...FEE_ROLES)
+  @RequireFeature('fees')
+  @FeatureSchoolFrom({ source: 'param', name: 'id', entity: 'feeInvoice' })
   @Get('fee-invoice/:id')
   async feeInvoice(
     @Param('id') id: string,
@@ -103,6 +107,8 @@ export class PdfController {
 
   @ApiOperation({ summary: 'Download a ZIP archive of the given fee invoice PDFs' })
   @Roles(...FEE_MANAGE_ROLES)
+  @RequireFeature('fees')
+  @FeatureSchoolFrom({ source: 'bodyIds', name: 'invoiceIds', entity: 'feeInvoice' })
   @Post('fee-invoices/archive')
   async feeInvoiceArchive(
     @Body() dto: InvoiceArchiveDto,
@@ -118,6 +124,8 @@ export class PdfController {
 
   @ApiOperation({ summary: 'Download fee payment receipt PDF' })
   @Roles(...FEE_ROLES)
+  @RequireFeature('fees')
+  @FeatureSchoolFrom({ source: 'param', name: 'paymentId', entity: 'feePayment' })
   @Get('fee-receipt/:paymentId')
   async feeReceipt(
     @Param('paymentId') paymentId: string,
@@ -195,6 +203,8 @@ export class PdfController {
 
   @ApiOperation({ summary: 'Download student report card PDF' })
   @Roles(...EXAM_ROLES)
+  @RequireFeature('exams')
+  @FeatureSchoolFrom({ source: 'param', name: 'examId', entity: 'exam' })
   @Get('report-card/:examId/:studentId')
   async reportCard(
     @Param('examId') examId: string,
@@ -212,6 +222,8 @@ export class PdfController {
 
   @ApiOperation({ summary: 'Download salary slip PDF' })
   @Roles(...PAYROLL_ROLES)
+  @RequireFeature('payroll')
+  @FeatureSchoolFrom({ source: 'param', name: 'payrollId', entity: 'payroll' })
   @Get('salary-slip/:payrollId')
   async salarySlip(
     @Param('payrollId') payrollId: string,
@@ -224,6 +236,7 @@ export class PdfController {
 
   @ApiOperation({ summary: 'Download expense report PDF' })
   @Roles(...FINANCE_ROLES)
+  @RequireFeature('expenses')
   @Get('expense-report')
   async expenseReport(
     @CurrentUserDecorator() user: CurrentUser,
@@ -236,6 +249,7 @@ export class PdfController {
 
   @ApiOperation({ summary: 'Download monthly financial report PDF' })
   @Roles(...FINANCE_ROLES)
+  @RequireFeature('reports')
   @Get('financial-report')
   async financialReport(
     @CurrentUserDecorator() user: CurrentUser,
@@ -248,6 +262,8 @@ export class PdfController {
 
   @ApiOperation({ summary: 'Download class timetable PDF' })
   @Roles(...TIMETABLE_ROLES)
+  @RequireFeature('timetable')
+  @FeatureSchoolFrom({ source: 'param', name: 'classId', entity: 'class' })
   @Get('class-timetable/:classId')
   async classTimetable(
     @Param('classId') classId: string,
@@ -265,6 +281,7 @@ export class PdfController {
 
   @ApiOperation({ summary: 'Download fee defaulters report PDF' })
   @Roles(...FEE_ROLES)
+  @RequireFeature('fees')
   @Get('fee-defaulters')
   async feeDefaulters(
     @CurrentUserDecorator() user: CurrentUser,

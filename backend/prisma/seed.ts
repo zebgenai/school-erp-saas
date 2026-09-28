@@ -62,6 +62,58 @@ async function main() {
     create: { schoolId: school.id, classId: classOne.id, name: 'A' },
   });
 
+  console.log('Seeding Feature Control catalog…');
+
+  // Feature Control catalog (idempotent; also ensured on API boot via FeaturesService).
+  for (const entry of [
+    { key: 'authentication', name: 'Authentication', description: 'Login, sessions, and account access', isCore: true },
+    { key: 'students', name: 'Students', description: 'Student records and management', isCore: true },
+    { key: 'parents', name: 'Parents', description: 'Parent records and portal links', isCore: true },
+    { key: 'teachers', name: 'Teachers', description: 'Teacher records and assignments', isCore: true },
+    { key: 'staff', name: 'Staff', description: 'Non-teaching staff management', isCore: true },
+    { key: 'classes', name: 'Classes', description: 'Classes and sections', isCore: true },
+    { key: 'subjects', name: 'Subjects', description: 'Subject catalog', isCore: true },
+    { key: 'attendance', name: 'Attendance', description: 'Student/teacher attendance and QR scanning (always on)', isCore: true },
+    { key: 'settings', name: 'Settings', description: 'School settings', isCore: true },
+    { key: 'id-cards', name: 'ID Cards', description: 'Student and teacher ID cards', isCore: true },
+    { key: 'exams', name: 'Exams', description: 'Exam setup, marks, and results', isCore: false },
+    {
+      key: 'results',
+      name: 'Results',
+      description:
+        'Marks and results — linked to Exams (follows Exams ON/OFF; no independent runtime state)',
+      isCore: false,
+    },
+    { key: 'fees', name: 'Fees', description: 'Fee structures, invoices, and payments', isCore: false },
+    { key: 'payroll', name: 'Payroll', description: 'Staff payroll', isCore: false },
+    { key: 'expenses', name: 'Expenses', description: 'School expenses', isCore: false },
+    { key: 'library', name: 'Library', description: 'Library books and issues', isCore: false },
+    { key: 'transport', name: 'Transport', description: 'Vehicles and routes', isCore: false },
+    { key: 'communication', name: 'Communication', description: 'Notices and announcements', isCore: false },
+    { key: 'notifications', name: 'Notifications', description: 'In-app and campaign notifications', isCore: false },
+    { key: 'homework', name: 'Homework', description: 'Homework assignments', isCore: false },
+    { key: 'online-classes', name: 'Online Classes', description: 'Online class sessions', isCore: false },
+    { key: 'academic-calendar', name: 'Academic Calendar', description: 'School calendar events', isCore: false },
+    { key: 'timetable', name: 'Timetable', description: 'Class timetables', isCore: false },
+    { key: 'reports', name: 'Reports', description: 'Analytics and reports', isCore: false },
+  ]) {
+    await prisma.feature.upsert({
+      where: { key: entry.key },
+      create: {
+        key: entry.key,
+        name: entry.name,
+        description: entry.description,
+        isGloballyEnabled: true,
+        isCore: entry.isCore,
+      },
+      update: {
+        name: entry.name,
+        description: entry.description,
+        isCore: entry.isCore,
+      },
+    });
+  }
+
   console.log('Seed completed successfully');
 }
 

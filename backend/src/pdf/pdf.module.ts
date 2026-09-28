@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ExamsModule } from '../exams/exams.module';
+import { FeaturesModule } from '../features/features.module';
 import { FeesModule } from '../fees/fees.module';
 import { PayrollModule } from '../payroll/payroll.module';
 import { ReportsModule } from '../reports/reports.module';
@@ -9,7 +10,15 @@ import { PdfController } from './pdf.controller';
 import { PdfService } from './pdf.service';
 
 @Module({
-  imports: [FeesModule, StudentsModule, ExamsModule, PayrollModule, ReportsModule, IdCardsModule],
+  imports: [
+    FeesModule,
+    StudentsModule,
+    ExamsModule,
+    PayrollModule,
+    ReportsModule,
+    IdCardsModule,
+    FeaturesModule,
+  ],
   controllers: [PdfController],
   providers: [PdfService],
   exports: [PdfService],

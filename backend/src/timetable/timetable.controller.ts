@@ -15,12 +15,15 @@ import { CurrentUserDecorator } from '../common/decorators/current-user.decorato
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser } from '../common/types/current-user.type';
+import { FeatureGuard } from '../features/feature.guard';
+import { RequireFeature } from '../features/require-feature.decorator';
 import { CreateTimetableEntryDto } from './dto/create-timetable-entry.dto';
 import { TimetableQueryDto } from './dto/timetable-query.dto';
 import { UpdateTimetableEntryDto } from './dto/update-timetable-entry.dto';
 import { TimetableService } from './timetable.service';
 
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, FeatureGuard)
+@RequireFeature('timetable')
 @Controller('timetable')
 export class TimetableController {
   constructor(private readonly timetableService: TimetableService) {}

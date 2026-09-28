@@ -18,6 +18,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationEngineService } from '../notifications/notification-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RolesService } from '../roles/roles.service';
+import { FeaturesService } from '../features/features.service';
 import { isTenantLoginRejected } from '../common/tenant/tenant-login';
 import type { TenantSchool } from '../common/tenant/tenant.types';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -46,6 +47,7 @@ export class AuthService {
     private rolesService: RolesService,
     private notifications: NotificationsService,
     private notificationEngine: NotificationEngineService,
+    private featuresService: FeaturesService,
   ) {}
 
   private static readonly MAX_ATTEMPTS = 5;
@@ -408,7 +410,9 @@ export class AuthService {
       schoolId: user.schoolId,
     });
 
-    return { ...this.safeUser(user), permissions };
+    const enabledFeatures = await this.featuresService.getEnabledFeatureKeys(user.schoolId);
+
+    return { ...this.safeUser(user), permissions, enabledFeatures };
   }
 
   private async issueTokens(user: any, ipAddress?: string, userAgent?: string) {

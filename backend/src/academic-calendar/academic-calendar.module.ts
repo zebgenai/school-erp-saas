@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
 import { AuditLogsModule } from '../audit-logs/audit-logs.module';
+import { FeaturesModule } from '../features/features.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AcademicCalendarController } from './academic-calendar.controller';
 import { AcademicCalendarService } from './academic-calendar.service';
 
 @Module({
-  imports: [PrismaModule, NotificationsModule, AuditLogsModule],
+  imports: [PrismaModule, NotificationsModule, AuditLogsModule, FeaturesModule],
   controllers: [AcademicCalendarController],
   providers: [AcademicCalendarService],
   exports: [AcademicCalendarService],

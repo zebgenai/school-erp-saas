@@ -1,3 +1,5 @@
+import { isPathFeatureAllowed } from "./feature-control.ts";
+
 export type AppRole =
   | "SUPER_ADMIN"
   | "PLATFORM_MANAGER"
@@ -181,6 +183,8 @@ export function canRoutePath(input: {
   path: string;
   permissions?: Record<string, boolean>;
   schoolId?: string | null;
+  /** Effective feature keys from /auth/me. When omitted, feature checks are skipped (compat). */
+  enabledFeatures?: string[] | null;
 }): boolean {
   const role = input.role ?? "STUDENT";
   const path = input.path || "/";
@@ -193,10 +197,13 @@ export function canRoutePath(input: {
   // The academic calendar is readable from every portal, scoped server-side by audience.
   const isCalendar = path === "/academic-calendar" || path.startsWith("/academic-calendar/");
   if (role === "PARENT") {
-    return isCalendar || path === "/parent" || path.startsWith("/parent/");
+    if (!(isCalendar || path === "/parent" || path.startsWith("/parent/"))) return false;
+    // Feature Control still applies to calendar when listed as controllable.
+    return isPathFeatureAllowed(path, input.enabledFeatures);
   }
   if (role === "STUDENT") {
-    return isCalendar || path === "/student" || path.startsWith("/student/");
+    if (!(isCalendar || path === "/student" || path.startsWith("/student/"))) return false;
+    return isPathFeatureAllowed(path, input.enabledFeatures);
   }
   if (role === "TEACHER") {
     if (path === "/teacher" || path.startsWith("/teacher/")) return true;
@@ -204,6 +211,8 @@ export function canRoutePath(input: {
   if (isPlatformStaff(role) && !input.schoolId) {
     return path === "/super-admin" || path.startsWith("/super-admin/");
   }
+
+  if (!isPathFeatureAllowed(path, input.enabledFeatures)) return false;
 
   const base = "/" + path.split("/").filter(Boolean)[0];
   const required = ROUTE_PERMISSIONS[base];

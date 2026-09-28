@@ -15,6 +15,8 @@ import { CurrentUserDecorator } from '../common/decorators/current-user.decorato
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser } from '../common/types/current-user.type';
+import { FeatureGuard } from '../features/feature.guard';
+import { RequireFeature } from '../features/require-feature.decorator';
 import { BookQueryDto } from './dto/book-query.dto';
 import { CreateBookCategoryDto } from './dto/create-book-category.dto';
 import { CreateBookDto } from './dto/create-book.dto';
@@ -24,7 +26,8 @@ import { UpdateBookCategoryDto } from './dto/update-book-category.dto';
 import { UpdateBookDto } from './dto/update-book.dto';
 import { LibraryService } from './library.service';
 
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, FeatureGuard)
+@RequireFeature('library')
 @Controller('library')
 export class LibraryController {
   constructor(private readonly libraryService: LibraryService) {}

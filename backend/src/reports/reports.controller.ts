@@ -6,6 +6,8 @@ import { CurrentUserDecorator } from '../common/decorators/current-user.decorato
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser } from '../common/types/current-user.type';
+import { FeatureGuard } from '../features/feature.guard';
+import { RequireFeature } from '../features/require-feature.decorator';
 import { DashboardQueryDto } from './dto/dashboard-query.dto';
 import { ReportsService } from './reports.service';
 
@@ -26,10 +28,12 @@ const DASHBOARD_ROLES = [
 
 @ApiTags('Reports')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, FeatureGuard)
 @Controller('reports')
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
+
+  // ── Dashboard / home widgets (NOT feature-gated — Dashboard depends on these) ─
 
   @ApiOperation({ summary: 'Dashboard summary for school admin' })
   @Roles(...DASHBOARD_ROLES)
@@ -83,6 +87,7 @@ export class ReportsController {
 
   @ApiOperation({ summary: 'Active student count by class' })
   @Roles(...TEACHER_ROLES)
+  @RequireFeature('reports')
   @Get('student-count-by-class')
   getStudentCountByClass(
     @CurrentUserDecorator() user: CurrentUser,
@@ -111,58 +116,10 @@ export class ReportsController {
     return this.reportsService.getRecentFeePayments(user, query);
   }
 
-  // ─── Detailed Reports ────────────────────────────────────────────────────────
-
-  @ApiOperation({ summary: 'Detailed attendance report by date range, class, or section' })
-  @Roles(...TEACHER_ROLES)
-  @Get('attendance')
-  getAttendanceReport(
-    @CurrentUserDecorator() user: CurrentUser,
-    @Query() query: DashboardQueryDto,
-  ) {
-    return this.reportsService.getAttendanceReport(user, query);
-  }
-
-  @ApiOperation({ summary: 'Detailed fee collection report for a month/year' })
-  @Roles(...FEE_ROLES)
-  @Get('fees')
-  getFeeReport(
-    @CurrentUserDecorator() user: CurrentUser,
-    @Query() query: DashboardQueryDto,
-  ) {
-    return this.reportsService.getFeeReport(user, query);
-  }
-
-  @ApiOperation({ summary: 'Detailed expense report with category breakdown' })
-  @Roles(...FEE_ROLES)
-  @Get('expenses')
-  getExpenseReport(
-    @CurrentUserDecorator() user: CurrentUser,
-    @Query() query: DashboardQueryDto,
-  ) {
-    return this.reportsService.getExpenseReport(user, query);
-  }
-
-  @ApiOperation({ summary: 'Monthly salary / payroll report' })
-  @Roles(...ADMIN_ROLES, UserRole.ACCOUNTANT)
-  @Get('salary')
-  getSalaryReport(
-    @CurrentUserDecorator() user: CurrentUser,
-    @Query() query: DashboardQueryDto,
-  ) {
-    return this.reportsService.getSalaryReport(user, query);
-  }
-
-  @ApiOperation({ summary: 'Per-student summary: attendance + fee status for a month' })
-  @Roles(...TEACHER_ROLES, UserRole.ACCOUNTANT)
-  @Get('students')
-  getStudentReport(
-    @CurrentUserDecorator() user: CurrentUser,
-    @Query() query: DashboardQueryDto,
-  ) {
-    return this.reportsService.getStudentReport(user, query);
-  }
-
+  /**
+   * Used by Dashboard finance widgets AND Reports P&L tab.
+   * Left ungated so Dashboard remains available when Reports feature is OFF.
+   */
   @ApiOperation({ summary: 'Monthly Profit & Loss report for a year' })
   @Roles(...FEE_ROLES)
   @Get('profit-loss')
@@ -173,8 +130,66 @@ export class ReportsController {
     return this.reportsService.getProfitLossReport(user, query);
   }
 
+  // ── Detailed Reports page endpoints (feature-gated) ─────────────────────────
+
+  @ApiOperation({ summary: 'Detailed attendance report by date range, class, or section' })
+  @Roles(...TEACHER_ROLES)
+  @RequireFeature('reports')
+  @Get('attendance')
+  getAttendanceReport(
+    @CurrentUserDecorator() user: CurrentUser,
+    @Query() query: DashboardQueryDto,
+  ) {
+    return this.reportsService.getAttendanceReport(user, query);
+  }
+
+  @ApiOperation({ summary: 'Detailed fee collection report for a month/year' })
+  @Roles(...FEE_ROLES)
+  @RequireFeature('reports')
+  @Get('fees')
+  getFeeReport(
+    @CurrentUserDecorator() user: CurrentUser,
+    @Query() query: DashboardQueryDto,
+  ) {
+    return this.reportsService.getFeeReport(user, query);
+  }
+
+  @ApiOperation({ summary: 'Detailed expense report with category breakdown' })
+  @Roles(...FEE_ROLES)
+  @RequireFeature('reports')
+  @Get('expenses')
+  getExpenseReport(
+    @CurrentUserDecorator() user: CurrentUser,
+    @Query() query: DashboardQueryDto,
+  ) {
+    return this.reportsService.getExpenseReport(user, query);
+  }
+
+  @ApiOperation({ summary: 'Monthly salary / payroll report' })
+  @Roles(...ADMIN_ROLES, UserRole.ACCOUNTANT)
+  @RequireFeature('reports')
+  @Get('salary')
+  getSalaryReport(
+    @CurrentUserDecorator() user: CurrentUser,
+    @Query() query: DashboardQueryDto,
+  ) {
+    return this.reportsService.getSalaryReport(user, query);
+  }
+
+  @ApiOperation({ summary: 'Per-student summary: attendance + fee status for a month' })
+  @Roles(...TEACHER_ROLES, UserRole.ACCOUNTANT)
+  @RequireFeature('reports')
+  @Get('students')
+  getStudentReport(
+    @CurrentUserDecorator() user: CurrentUser,
+    @Query() query: DashboardQueryDto,
+  ) {
+    return this.reportsService.getStudentReport(user, query);
+  }
+
   @ApiOperation({ summary: 'Exam result report by class/section' })
   @Roles(...TEACHER_ROLES, UserRole.ACCOUNTANT)
+  @RequireFeature('reports')
   @Get('exam-results')
   getExamResultReport(
     @CurrentUserDecorator() user: CurrentUser,

@@ -16,6 +16,8 @@ import { CurrentUserDecorator } from '../common/decorators/current-user.decorato
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser } from '../common/types/current-user.type';
+import { FeatureGuard } from '../features/feature.guard';
+import { RequireFeature } from '../features/require-feature.decorator';
 import { AcademicCalendarService } from './academic-calendar.service';
 import {
   CreateCalendarEventDto,
@@ -38,7 +40,8 @@ const MANAGE_ROLES = [
 
 @ApiTags('Academic Calendar')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, FeatureGuard)
+@RequireFeature('academic-calendar')
 @Controller('academic-calendar')
 export class AcademicCalendarController {
   constructor(private readonly calendar: AcademicCalendarService) {}

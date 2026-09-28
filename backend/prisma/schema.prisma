@@ -198,10 +198,43 @@ model School {
   idCards           StudentIdCard[]
   teacherIdCards    TeacherIdCard[]
   notificationLogs  NotificationLog[]
+  schoolFeatures    SchoolFeature[]
 
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
+
+/// Platform feature catalog for Feature Control (orthogonal to roles/permissions).
+model Feature {
+  id                 String   @id @default(uuid())
+  key                String   @unique
+  name               String
+  description        String?
+  isGloballyEnabled  Boolean  @default(true)
+  isCore             Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  schoolFeatures SchoolFeature[]
+}
+
+/// Per-school override. Missing row = INHERIT (use Feature.isGloballyEnabled only).
+model SchoolFeature {
+  id        String  @id @default(uuid())
+  schoolId  String
+  school    School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  featureId String
+  feature   Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+  isEnabled Boolean
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([schoolId, featureId])
+  @@index([schoolId])
+  @@index([featureId])
+}
+
 
 model SubscriptionPlan {
   id            String    @id @default(uuid())
