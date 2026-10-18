@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
@@ -17,6 +18,12 @@ import { CreateStudentDto } from './dto/create-student.dto';
 import { StudentQueryDto } from './dto/student-query.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
 import { syncFatherParent } from './father-parent-sync';
+import {
+  DuplicateAdmissionError,
+  ImportBatchFallback,
+  isUniqueViolation,
+} from './import/student-import.errors';
+import { NewStudentWrite } from './import/student-import.types';
 
 function studentInclude(): Prisma.StudentInclude {
   const now = new Date();
@@ -33,6 +40,8 @@ function studentInclude(): Prisma.StudentInclude {
 
 @Injectable()
 export class StudentsService {
+  private readonly logger = new Logger(StudentsService.name);
+
   constructor(
     private prisma: PrismaService,
     private readonly notificationEngine: NotificationEngineService,
@@ -323,6 +332,114 @@ export class StudentsService {
         throw new BadRequestException('Section does not belong to the specified class');
       }
     }
+  }
+
+  /** School for a write. Super admin must pass schoolId; everyone else is pinned to the JWT school. */
+  resolveWritableSchoolId(currentUser: CurrentUser, schoolId?: string): string {
+    return this.resolveSchoolId(currentUser, schoolId);
+  }
+
+  /**
+   * Same student row and father-parent rules as create(), without per-row notifications.
+   * A duplicate admission number is skipped by the caller — this never updates an existing student.
+   */
+  async createImported(schoolId: string, data: NewStudentWrite, currentUser: CurrentUser) {
+    this.assertSchoolAccess(currentUser, schoolId);
+    await this.validateClassAndSection(schoolId, data.classId, data.sectionId);
+    try {
+      const student = await this.prisma.$transaction((tx) => this.writeImportedStudent(tx, schoolId, data));
+      return this.finishImportedStudent(student, data, currentUser);
+    } catch (error) {
+      if (error instanceof DuplicateAdmissionError) throw error;
+      if (isUniqueViolation(error)) throw new DuplicateAdmissionError();
+      if (error instanceof ForbiddenException || error instanceof BadRequestException || error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new BadRequestException('This row could not be saved. No existing student was changed.');
+    }
+  }
+
+  async createImportedMany(schoolId: string, rows: NewStudentWrite[], currentUser: CurrentUser) {
+    this.assertSchoolAccess(currentUser, schoolId);
+    if (rows.length === 0) return [];
+    try {
+      for (const data of rows) {
+        await this.validateClassAndSection(schoolId, data.classId, data.sectionId);
+      }
+      const created = await this.prisma.$transaction(async (tx) => {
+        const out: Awaited<ReturnType<StudentsService['writeImportedStudent']>>[] = [];
+        for (const data of rows) out.push(await this.writeImportedStudent(tx, schoolId, data));
+        return out;
+      });
+      const results: { admissionNo: string; feeWarning?: string }[] = [];
+      for (let index = 0; index < created.length; index++) {
+        results.push(await this.finishImportedStudent(created[index], rows[index], currentUser));
+      }
+      return results;
+    } catch (error) {
+      if (error instanceof ForbiddenException) throw error;
+      throw new ImportBatchFallback();
+    }
+  }
+
+  private async writeImportedStudent(
+    tx: Prisma.TransactionClient,
+    schoolId: string,
+    data: NewStudentWrite,
+  ) {
+    const existing = await tx.student.findUnique({
+      where: { schoolId_admissionNo: { schoolId, admissionNo: data.admissionNo } },
+      select: { id: true },
+    });
+    if (existing) throw new DuplicateAdmissionError();
+
+    const created = await tx.student.create({
+      data: {
+        schoolId,
+        admissionNo: data.admissionNo,
+        admissionDate: data.admissionDate ? new Date(`${data.admissionDate}T00:00:00.000Z`) : undefined,
+        fullName: data.fullName,
+        fatherName: data.fatherName,
+        guardianPhone: data.guardianPhone,
+        whatsappNumber: data.whatsappNumber,
+        gender: data.gender,
+        dateOfBirth: data.dateOfBirth ? new Date(`${data.dateOfBirth}T00:00:00.000Z`) : null,
+        address: data.address,
+        classId: data.classId,
+        sectionId: data.sectionId,
+        monthlyFee: data.monthlyFee,
+        status: data.status || 'ACTIVE',
+      },
+      select: {
+        id: true,
+        schoolId: true,
+        admissionNo: true,
+        fullName: true,
+        fatherName: true,
+        guardianPhone: true,
+        address: true,
+        monthlyFee: true,
+      },
+    });
+    await syncFatherParent(tx, created);
+    return created;
+  }
+
+  private async finishImportedStudent(
+    student: { id: string; schoolId: string; admissionNo: string; monthlyFee: number },
+    data: NewStudentWrite,
+    currentUser: CurrentUser,
+  ) {
+    let feeWarning: string | undefined;
+    if (student.monthlyFee > 0 && data.feeStatus) {
+      try {
+        await this.feesService.applyAdmissionFee(student, data.feeStatus, currentUser);
+      } catch {
+        this.logger.warn('Student import could not create the current-month fee invoice');
+        feeWarning = 'Student was created, but the current-month fee invoice could not be created.';
+      }
+    }
+    return { admissionNo: student.admissionNo, feeWarning };
   }
 
   private resolveSchoolId(currentUser: CurrentUser, schoolId?: string): string {

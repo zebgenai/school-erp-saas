@@ -109,7 +109,7 @@ describe('ATTENDANCE_SCANNER denied on other module controllers', () => {
 
     const samples: Array<{ ctrl: object; methods: string[] }> = [
       {
-        ctrl: new StudentsController({} as any),
+        ctrl: new StudentsController({} as any, {} as any),
         methods: ['findAll', 'create', 'update', 'remove'].filter((m) =>
           typeof (StudentsController.prototype as any)[m] === 'function',
         ),

@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useRef, useState } from "react";
-import { Plus, Search, Edit2, Trash2, Users, Eye, Upload, FileText, X, Download, Printer, Image as ImageIcon, CreditCard } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, Users, Eye, Upload, FileText, X, Download, Printer, Image as ImageIcon, CreditCard, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
 import { toastSuccess, toastError } from "@/lib/errors";
 import { AppShell } from "@/components/layout/AppShell";
@@ -13,6 +13,8 @@ import { useApiQuery, asList } from "@/lib/hooks";
 import { api, authorizedFetch, getApiBaseUrl, resolveFileUrl } from "@/lib/api";
 import { usePermissions } from "@/lib/permissions";
 import { pdfApi } from "@/lib/pdfUtils";
+import { StudentImportDialog } from "@/components/students/StudentImportDialog";
+import { downloadStudentTemplate } from "@/lib/student-import";
 
 export const Route = createFileRoute("/students")({
   head: () => ({ meta: [{ title: "Students — School ERP" }] }),
@@ -58,6 +60,7 @@ function Students() {
   const [del, setDel] = useState<any | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const students = asList<any>(list.data);
   const total = (list.data as any)?.total ?? students.length;
@@ -127,9 +130,17 @@ function Students() {
         title="Students"
         description="Manage admissions, profiles, and student records."
         actions={canCreate ? (
-          <Button onClick={() => setModal({ open: true, data: null })}>
-            <Plus className="size-4" /> Add Student
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => downloadStudentTemplate().catch((error) => toastError(error, "Could not download the template"))}>
+              <Download className="size-4" /> Download Excel Template
+            </Button>
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <FileSpreadsheet className="size-4" /> Import from Excel
+            </Button>
+            <Button onClick={() => setModal({ open: true, data: null })}>
+              <Plus className="size-4" /> Add Student
+            </Button>
+          </div>
         ) : undefined}
       />
 
@@ -228,6 +239,12 @@ function Students() {
           </div>
         )}
       </Card>
+
+      <StudentImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={() => list.refetch()}
+      />
 
       {modal.open && (
         <StudentForm
