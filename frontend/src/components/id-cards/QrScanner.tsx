@@ -294,6 +294,12 @@ export function QrAttendanceScanner({ mode = "student", onResult }: Props) {
       }
 
       if (mode === "teacher") {
+        if (classifyAttendanceQrToken(token) === "student") {
+          setStudentBanner(null);
+          setTeacherBanner(null);
+          setError("Student attendance scanning is not available for your role.");
+          return;
+        }
         await postTeacher(token);
         return;
       }

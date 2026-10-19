@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { AttendanceStatus, UserRole } from '@prisma/client';
+import { ForbiddenException } from '@nestjs/common';
 import { AttendanceService, QR_SCAN_REMARKS } from './attendance.service';
 import { generateQrToken } from '../id-cards/qr-token';
 
@@ -388,6 +389,82 @@ describe('QR attendance scan', () => {
     const result = await svc.markFromQrScan({ token }, admin as any);
     assert.equal(result.result, 'SUCCESS');
   });
+
+  it('does not consult the timetable and does not send an absence notification', async () => {
+    const token = generateQrToken();
+    const dispatched: string[] = [];
+    const svc = new AttendanceService(
+      {
+        studentIdCard: {
+          findUnique: async () => ({
+            qrToken: token,
+            schoolId: schoolA,
+            isActive: true,
+            revokedAt: null,
+            student: studentA,
+          }),
+        },
+        studentAttendance: {
+          findUnique: async () => null,
+          create: async ({ data }: { data: Record<string, unknown> }) => ({ id: 'att-1', ...data }),
+        },
+        school: {
+          findUnique: async () => ({
+            id: schoolA,
+            timezone: 'Asia/Karachi',
+            attendancePresentUntil: null,
+            attendanceLateUntil: null,
+          }),
+        },
+        teacher: {
+          findFirst: async () => {
+            throw new Error('teacher profile should not be consulted for QR');
+          },
+        },
+        timetableEntry: {
+          findFirst: async () => {
+            throw new Error('timetable should not be consulted for QR');
+          },
+        },
+      } as never,
+      { dispatch: (fn: () => Promise<void>) => dispatched.push(fn.toString()) } as never,
+    );
+    const result = await svc.markFromQrScan({ token }, teacher as any);
+    assert.equal(result.result, 'SUCCESS');
+    assert.equal(result.status, AttendanceStatus.PRESENT);
+    assert.equal(dispatched.length, 0);
+  });
+
+  it('rejects a receptionist and a card whose student is in another school', async () => {
+    const token = generateQrToken();
+    const receptionist = { ...teacher, id: 'rec-1', role: UserRole.RECEPTIONIST };
+    const created: unknown[] = [];
+    const svc = serviceWith({
+      studentIdCard: {
+        findUnique: async () => ({
+          qrToken: token,
+          schoolId: schoolA,
+          isActive: true,
+          revokedAt: null,
+          student: { ...studentA, schoolId: schoolB },
+        }),
+      },
+      studentAttendance: {
+        findUnique: async () => null,
+        create: async ({ data }: { data: unknown }) => {
+          created.push(data);
+          return { id: 'att-1' };
+        },
+      },
+    });
+    await assert.rejects(
+      () => svc.markFromQrScan({ token }, receptionist as any),
+      (error: unknown) => error instanceof ForbiddenException && /not available for your role/.test(error.message),
+    );
+    const crossSchool = await svc.markFromQrScan({ token }, teacher as any);
+    assert.equal(crossSchool.result, 'INVALID');
+    assert.equal(created.length, 0);
+  });
 });
 
 describe('manual attendance still upserts', () => {
@@ -396,6 +473,12 @@ describe('manual attendance still upserts', () => {
     const svc = serviceWith({
       student: {
         findUnique: async () => studentA,
+      },
+      teacher: {
+        findFirst: async () => ({ id: 'teacher-profile' }),
+      },
+      timetableEntry: {
+        findFirst: async () => ({ id: 'tt-1', classId: 'class-1' }),
       },
       studentAttendance: {
         findUnique: async () => ({ id: 'att-1', status: AttendanceStatus.PRESENT }),
@@ -411,6 +494,25 @@ describe('manual attendance still upserts', () => {
           };
         },
       },
+      $transaction: async (fn: (tx: unknown) => Promise<unknown>) =>
+        fn({
+          $queryRaw: async () => [
+            { id: 'att-1', studentId: studentA.id, status: AttendanceStatus.PRESENT },
+          ],
+          studentAttendance: {
+            update: async ({ data }: { data: { status: AttendanceStatus } }) => {
+              updated = true;
+              return {
+                id: 'att-1',
+                ...data,
+                student: studentA,
+                class: null,
+                section: null,
+                markedBy: null,
+              };
+            },
+          },
+        }),
     });
     const row = await svc.mark(
       { studentId: studentA.id, date: '2026-09-17', status: AttendanceStatus.ABSENT },

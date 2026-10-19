@@ -54,7 +54,9 @@ describe('ATTENDANCE_SCANNER role wiring', () => {
     assert.ok(roles.includes(UserRole.SCHOOL_ADMIN));
     assert.ok(roles.includes(UserRole.TEACHER));
     assert.ok(!roles.includes(UserRole.SUPER_ADMIN));
+    assert.ok(!roles.includes(UserRole.RECEPTIONIST));
     assert.equal(guardAllows(roles, UserRole.ATTENDANCE_SCANNER), true);
+    assert.equal(guardAllows(roles, UserRole.RECEPTIONIST), false);
   });
 
   it('teacher QR endpoint allows ATTENDANCE_SCANNER', () => {
@@ -79,6 +81,10 @@ describe('ATTENDANCE_SCANNER role wiring', () => {
       'findAll',
       'getSummary',
       'getClassReport',
+      'getRegister',
+      'getSchoolToday',
+      'getTodayOverview',
+      'getTodayRoster',
     ] as const) {
       const roles = rolesOn(controller, method);
       assert.ok(!roles.includes(UserRole.ATTENDANCE_SCANNER), method);

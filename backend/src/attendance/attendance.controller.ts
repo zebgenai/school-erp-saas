@@ -18,6 +18,7 @@ import { CurrentUser } from '../common/types/current-user.type';
 import { AttendanceService } from './attendance.service';
 import { TeacherAttendanceService } from './teacher-attendance.service';
 import { AttendanceQueryDto } from './dto/attendance-query.dto';
+import { TodayRosterQueryDto } from './dto/today-roster-query.dto';
 import { BulkAttendanceDto } from './dto/bulk-attendance.dto';
 import { MarkAttendanceDto } from './dto/mark-attendance.dto';
 import { QrScanDto } from './dto/qr-scan.dto';
@@ -108,6 +109,53 @@ export class AttendanceController {
   @Post('qr-scan')
   markFromQrScan(@Body() dto: QrScanDto, @CurrentUserDecorator() user: CurrentUser) {
     return this.attendanceService.markFromQrScan(dto, user);
+  }
+
+  @ApiOperation({
+    summary: 'School-local calendar date used as the attendance default',
+    description:
+      'School users use their own school. Super admins must pass a valid schoolId. Asia/Karachi is used only when that school has no timezone. Does not use the server UTC date.',
+  })
+  @Roles(UserRole.SUPER_ADMIN, UserRole.SCHOOL_ADMIN, UserRole.TEACHER, UserRole.ACCOUNTANT, UserRole.RECEPTIONIST)
+  @Get('school-today')
+  getSchoolToday(
+    @CurrentUserDecorator() user: CurrentUser,
+    @Query('schoolId') schoolId?: string,
+  ) {
+    return this.attendanceService.getSchoolToday(user, schoolId);
+  }
+
+  @ApiOperation({
+    summary: 'Full class register with saved attendance for one date',
+    description:
+      'Returns every active student in the class or section and their saved status. Unmarked students are null, not Present. Not paginated, up to the register limit.',
+  })
+  @Roles(UserRole.SUPER_ADMIN, UserRole.SCHOOL_ADMIN, UserRole.TEACHER, UserRole.ACCOUNTANT, UserRole.RECEPTIONIST)
+  @Get('register')
+  getRegister(@CurrentUserDecorator() user: CurrentUser, @Query() query: AttendanceQueryDto) {
+    return this.attendanceService.getRegister(user, query);
+  }
+
+  @ApiOperation({
+    summary: "School Admin today's attendance counts in the school timezone",
+    description:
+      'Active students only. Not Marked is active students with no saved row. Late is counted separately and is not Not Marked. A schoolId other than the signed-in school is rejected.',
+  })
+  @Roles(UserRole.SCHOOL_ADMIN)
+  @Get('today-overview')
+  getTodayOverview(@CurrentUserDecorator() user: CurrentUser, @Query('schoolId') schoolId?: string) {
+    return this.attendanceService.getTodayOverview(user, { schoolId });
+  }
+
+  @ApiOperation({
+    summary: "School Admin roster for one of today's attendance categories",
+    description:
+      'Paginated active students for PRESENT, ABSENT, LEAVE, LATE, or NOT_MARKED. Read-only. Class and section must belong to the signed-in school.',
+  })
+  @Roles(UserRole.SCHOOL_ADMIN)
+  @Get('today-roster')
+  getTodayRoster(@CurrentUserDecorator() user: CurrentUser, @Query() query: TodayRosterQueryDto) {
+    return this.attendanceService.getTodayRoster(user, query);
   }
 
   @ApiOperation({ summary: 'List attendance records' })

@@ -1,11 +1,11 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { homeRouteForRole } from "@/lib/permissions";
 import { motion } from "framer-motion";
 import {
   Users, UserCheck, UserX, Wallet, TrendingUp, ClipboardList,
   Plus, CalendarCheck, Receipt, GraduationCap, ArrowUpRight,
-  UserCog, Briefcase, Building, TrendingDown, BookOpen,
+  UserCog, Briefcase, Building, TrendingDown, BookOpen, Clock, CalendarOff,
 } from "lucide-react";
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line, Legend,
@@ -16,9 +16,12 @@ import { RecentActivityWidget } from "@/components/ActivityTimeline";
 import { UpcomingEventsWidget } from "@/components/UpcomingEventsWidget";
 import { CurrentPlanCard } from "@/components/CurrentPlanCard";
 import { Card, PageHeader, StaggerItem, StaggerList, Skeleton, EmptyState, StatusBadge, ErrorState } from "@/components/ui-kit";
+import { Modal } from "@/components/Modal";
+import { Select, TextInput } from "@/components/form";
 import { useApiQuery, asList, asObj } from "@/lib/hooks";
 import { useAuth } from "@/lib/auth";
 import { usePermissions } from "@/lib/permissions";
+import { showsLegacyTodayAttendanceCards, showsSchoolAdminTodayOverview } from "@/lib/attendance-overview";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard — School ERP" }] }),
@@ -74,8 +77,8 @@ function Dashboard() {
     { label: "Total Staff", value: numOrDash(s.totalStaff ?? 0), icon: Briefcase, tone: "from-slate-500/15 to-slate-500/5", color: "text-slate-600", show: !isReceptionist },
     { label: "Total Classes", value: numOrDash(s.totalClasses ?? 0), icon: BookOpen, tone: "from-cyan-500/15 to-cyan-500/5", color: "text-cyan-600", show: true },
     { label: "New Admissions", value: numOrDash(s.newAdmissions ?? 0), icon: GraduationCap, tone: "from-fuchsia-500/15 to-fuchsia-500/5", color: "text-fuchsia-600", show: true },
-    { label: "Present Today", value: numOrDash(s.todayAttendance?.present ?? s.presentToday ?? 0), icon: UserCheck, tone: "from-emerald-500/15 to-emerald-500/5", color: "text-emerald-600", show: showAttendanceCharts },
-    { label: "Absent Today", value: numOrDash(s.todayAttendance?.absent ?? s.absentToday ?? 0), icon: UserX, tone: "from-rose-500/15 to-rose-500/5", color: "text-rose-600", show: showAttendanceCharts },
+    { label: "Present Today", value: numOrDash(s.todayAttendance?.present ?? s.presentToday ?? 0), icon: UserCheck, tone: "from-emerald-500/15 to-emerald-500/5", color: "text-emerald-600", show: showsLegacyTodayAttendanceCards(role, showAttendanceCharts) },
+    { label: "Absent Today", value: numOrDash(s.todayAttendance?.absent ?? s.absentToday ?? 0), icon: UserX, tone: "from-rose-500/15 to-rose-500/5", color: "text-rose-600", show: showsLegacyTodayAttendanceCards(role, showAttendanceCharts) },
     { label: "Fees Collected", value: formatMoney(collected), icon: TrendingUp, tone: "from-violet-500/15 to-violet-500/5", color: "text-violet-600", show: showFinance },
     { label: "Pending Fees", value: formatMoney(s.fees?.totalPending ?? s.pendingFees ?? 0), icon: Wallet, tone: "from-amber-500/15 to-amber-500/5", color: "text-amber-600", show: showFinance || showFeeView },
     { label: "Monthly Expenses", value: formatMoney(expenses), icon: TrendingDown, tone: "from-orange-500/15 to-orange-500/5", color: "text-orange-600", show: showFinance },
@@ -147,6 +150,8 @@ function Dashboard() {
           ))}
         </div>
       </StaggerList>
+
+      {showsSchoolAdminTodayOverview(role) && <TodayAttendanceSection />}
 
       <div className="grid lg:grid-cols-3 gap-6 mb-6">
         {showFeeView && (
@@ -346,6 +351,172 @@ function Dashboard() {
         <RecentActivityWidget />
       </Card>
     </div>
+  );
+}
+
+type TodayCategory = "PRESENT" | "ABSENT" | "LEAVE" | "NOT_MARKED" | "LATE";
+
+const TODAY_CATEGORIES: Array<{
+  key: Exclude<TodayCategory, "LATE">;
+  label: string;
+  icon: typeof UserCheck;
+  tone: string;
+  color: string;
+}> = [
+  { key: "PRESENT", label: "Present", icon: UserCheck, tone: "from-emerald-500/15 to-emerald-500/5", color: "text-emerald-600" },
+  { key: "ABSENT", label: "Absent", icon: UserX, tone: "from-rose-500/15 to-rose-500/5", color: "text-rose-600" },
+  { key: "LEAVE", label: "Leave", icon: CalendarOff, tone: "from-sky-500/15 to-sky-500/5", color: "text-sky-600" },
+  { key: "NOT_MARKED", label: "Not Marked", icon: ClipboardList, tone: "from-amber-500/15 to-amber-500/5", color: "text-amber-600" },
+];
+
+function formatSchoolDate(value?: string) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return value || "—";
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function TodayAttendanceSection() {
+  const [category, setCategory] = useState<TodayCategory | null>(null);
+  const [classId, setClassId] = useState("");
+  const [sectionId, setSectionId] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
+  const pageSize = 50;
+
+  const overview = useApiQuery<any>("/attendance/today-overview");
+  const classes = useApiQuery<any>("/classes");
+  const sections = useApiQuery<any>(category && classId ? "/sections" : null, { classId: classId || undefined });
+  const roster = useApiQuery<any>(category ? "/attendance/today-roster" : null, {
+    category: category || undefined,
+    classId: classId || undefined,
+    sectionId: sectionId || undefined,
+    search: search.trim() || undefined,
+    limit: pageSize,
+    skip: page * pageSize,
+  });
+
+  const counts = asObj<any>(overview.data);
+  const students = asList<any>(roster.data);
+  const total = Number((roster.data as any)?.total ?? 0);
+  const openCategory = (next: TodayCategory) => {
+    setCategory(next);
+    setClassId("");
+    setSectionId("");
+    setSearch("");
+    setPage(0);
+  };
+  const label = category === "NOT_MARKED" ? "Not Marked" : category === "LATE" ? "Late" : category ? category[0] + category.slice(1).toLowerCase() : "";
+
+  return (
+    <Card className="mb-6">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+        <div>
+          <h3 className="font-semibold">Today's Attendance</h3>
+          <p className="text-xs text-muted-foreground mt-1">
+            {overview.loading ? "Loading the school date…" : overview.error ? "School date unavailable" : `${formatSchoolDate(counts.date)} · ${counts.timeZone || "School timezone"}`}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => openCategory("LATE")}
+          disabled={overview.loading || Boolean(overview.error)}
+          className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm hover:bg-muted disabled:opacity-60"
+        >
+          <Clock className="size-4 text-amber-600" />
+          Late
+          <span className="font-semibold">{overview.loading || overview.error ? "—" : counts.late ?? 0}</span>
+        </button>
+      </div>
+      {overview.loading ? <Skeleton className="h-24" /> : overview.error ? (
+        <ErrorState message={overview.error} onRetry={overview.refetch} />
+      ) : (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {TODAY_CATEGORIES.map((item) => {
+            const Icon = item.icon;
+            const value = item.key === "NOT_MARKED" ? counts.notMarked : counts[item.key.toLowerCase()];
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => openCategory(item.key)}
+                className={`rounded-2xl border bg-gradient-to-br ${item.tone} p-4 text-left hover:border-border`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="text-xs text-muted-foreground font-medium">{item.label}</div>
+                    <div className="text-2xl font-bold mt-1.5">{value ?? 0}</div>
+                  </div>
+                  <div className={`size-10 rounded-xl bg-card ${item.color} grid place-items-center`}>
+                    <Icon className="size-5" />
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <Modal
+        open={Boolean(category)}
+        onClose={() => setCategory(null)}
+        title={label}
+        description={counts.date ? `${formatSchoolDate(counts.date)} · read only` : "Read only"}
+        size="xl"
+      >
+        <div className="grid sm:grid-cols-3 gap-3 mb-4">
+          <TextInput
+            placeholder="Search name or admission no"
+            value={search}
+            onChange={(event) => { setSearch(event.target.value); setPage(0); }}
+          />
+          <Select value={classId} onChange={(event) => { setClassId(event.target.value); setSectionId(""); setPage(0); }}>
+            <option value="">All classes</option>
+            {asList<any>(classes.data).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </Select>
+          <Select value={sectionId} onChange={(event) => { setSectionId(event.target.value); setPage(0); }} disabled={!classId}>
+            <option value="">All sections</option>
+            {asList<any>(sections.data).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </Select>
+        </div>
+        {roster.loading ? <Skeleton className="h-40" /> : roster.error ? (
+          <ErrorState message={roster.error} onRetry={roster.refetch} />
+        ) : students.length === 0 ? (
+          <EmptyState icon={Users} title="No students" description="Nobody in this category matches the current filters." />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-left text-muted-foreground">
+                <tr>
+                  <th className="py-2 pr-3 font-medium">Admission no</th>
+                  <th className="py-2 pr-3 font-medium">Name</th>
+                  <th className="py-2 pr-3 font-medium">Class</th>
+                  <th className="py-2 font-medium">Section</th>
+                </tr>
+              </thead>
+              <tbody>
+                {students.map((student) => (
+                  <tr key={student.id} className="border-t">
+                    <td className="py-2 pr-3 font-mono text-xs">{student.admissionNo}</td>
+                    <td className="py-2 pr-3 font-medium">{student.fullName}</td>
+                    <td className="py-2 pr-3">{student.class?.name || "—"}</td>
+                    <td className="py-2">{student.section?.name || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {total > pageSize && (
+          <div className="flex items-center justify-between mt-4 text-sm">
+            <span className="text-muted-foreground">{total} students</span>
+            <div className="flex gap-2">
+              <button type="button" className="px-3 py-1.5 rounded-lg border disabled:opacity-50" disabled={page === 0} onClick={() => setPage((current) => current - 1)}>Previous</button>
+              <button type="button" className="px-3 py-1.5 rounded-lg border disabled:opacity-50" disabled={(page + 1) * pageSize >= total} onClick={() => setPage((current) => current + 1)}>Next</button>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </Card>
   );
 }
 

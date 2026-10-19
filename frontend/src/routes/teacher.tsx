@@ -11,6 +11,16 @@ import { useApiQuery, asList, asObj } from "@/lib/hooks";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
+import {
+  attendanceCounts,
+  attendanceSchoolParams,
+  bulkRecords,
+  marksFromStudents,
+  registerMatches,
+  saveBlockReason,
+  schoolTodayDate,
+  type AttendanceMark,
+} from "@/lib/attendance-register";
 
 export const Route = createFileRoute("/teacher")({
   head: () => ({ meta: [{ title: "Teacher Portal — School ERP" }] }),
@@ -236,52 +246,72 @@ function TeacherPortal() {
 /** Inline attendance entry — limited to teacher's assigned classes */
 function AttendanceTab({ assignedClasses }: { assignedClasses: any[] }) {
   const { user } = useAuth();
+  const schoolParams = attendanceSchoolParams(user);
+  const today = useApiQuery<{ date: string }>("/attendance/school-today", schoolParams);
   const [classId, setClassId]   = useState("");
   const [sectionId, setSectionId] = useState("");
-  const [date, setDate]         = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate]         = useState("");
+  const [dateTouched, setDateTouched] = useState(false);
   const sections = useApiQuery<any>(classId ? "/sections" : null, classId ? { classId } : undefined);
-  const students = useApiQuery<any[]>(classId ? "/students" : null, classId ? { classId, sectionId: sectionId || undefined } : undefined);
-  const existing = useApiQuery<any>(classId ? "/attendance" : null, { classId, sectionId: sectionId || undefined, date });
-  const [marks, setMarks]       = useState<Record<string, string>>({});
+  const register = useApiQuery<any>(classId && date ? "/attendance/register" : null, {
+    classId,
+    sectionId: sectionId || undefined,
+    date,
+  });
+  const [marks, setMarks]       = useState<Record<string, AttendanceMark>>({});
   const [saving, setSaving]     = useState(false);
+
+  useEffect(() => {
+    const next = schoolTodayDate(today.data);
+    if (next && !dateTouched) setDate(next);
+  }, [today.data, dateTouched]);
 
   const classList = assignedClasses.length > 0 ? assignedClasses : asList<any>([]);
   const sectionList = asList<any>(sections.data);
-  const studentList = asList<any>(students.data);
+  const registerBody = asObj<any>(register.data);
+  const registerReady = registerMatches(registerBody, classId, sectionId, date);
+  const studentList = registerReady ? asList<any>(registerBody.students) : [];
 
   useEffect(() => {
-    const m: Record<string, string> = {};
-    asList<any>(existing.data).forEach((a: any) => { m[a.studentId] = a.status; });
-    setMarks(m);
-  }, [existing.data]);
+    if (!registerReady) return;
+    setMarks(marksFromStudents(studentList));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- apply the register that just loaded
+  }, [register.data, registerReady]);
 
-  const setMark = (studentId: string, status: string) =>
+  const setMark = (studentId: string, status: AttendanceMark) =>
     setMarks((prev) => ({ ...prev, [studentId]: status }));
 
-  const markAll = (status: string) => {
-    const next: Record<string, string> = {};
+  const markAll = (status: AttendanceMark) => {
+    const next: Record<string, AttendanceMark> = {};
     studentList.forEach((s) => { next[s.id] = status; });
     setMarks(next);
   };
 
+  const counts = attendanceCounts(studentList.map((s: any) => s.id), marks);
+  const blockReason = saveBlockReason({
+    classId,
+    date,
+    studentCount: studentList.length,
+    unmarked: counts.unmarked,
+    studentsLoading: Boolean(classId && date && register.loading),
+    attendanceLoading: Boolean(classId && date && (register.loading || register.isFetching)),
+    attendanceError: register.error,
+    classesError: null,
+    sectionsLoading: Boolean(classId && sections.loading),
+    sectionsError: classId ? sections.error : null,
+    dateError: today.error,
+  });
+
   const save = async () => {
-    if (!classId) return toast.error("Select a class");
-    if (studentList.length === 0) return toast.error("No students to mark");
+    if (blockReason) return toast.error(blockReason);
     setSaving(true);
     try {
-      const isSuper = (user?.role || "").toUpperCase() === "SUPER_ADMIN";
-      const schoolId = (user as any)?.schoolId || user?.school?.id;
-      const records = studentList.map((s) => ({
-        studentId: s.id,
-        status: marks[s.id] ?? "PRESENT",
-        remarks: "",
-      }));
+      const records = bulkRecords(studentList, marks);
       const body: Record<string, any> = { classId, date, records };
       if (sectionId) body.sectionId = sectionId;
-      if (isSuper && schoolId) body.schoolId = schoolId;
       await api.post("/attendance/bulk", body);
       toast.success("Attendance saved");
-      existing.refetch();
+      register.refetch();
     } catch (e: any) {
       toast.error(e?.message || "Failed to save");
     } finally {
@@ -300,11 +330,11 @@ function AttendanceTab({ assignedClasses }: { assignedClasses: any[] }) {
         </select>
         <select value={sectionId} onChange={(e) => { setSectionId(e.target.value); setMarks({}); }}
           className="h-10 px-3 rounded-lg border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
-          disabled={!classId}>
+          disabled={!classId || Boolean(sections.error)}>
           <option value="">All sections</option>
           {sectionList.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+        <input type="date" value={date} onChange={(e) => { setDateTouched(true); setDate(e.target.value); setMarks({}); }}
           className="h-10 px-3 rounded-lg border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring/40" />
         <div className="flex gap-2 ml-auto">
           <button onClick={() => markAll("PRESENT")} className="px-3 h-9 rounded-lg border text-xs bg-green-50 text-green-700 hover:bg-green-100 transition flex items-center gap-1">
@@ -316,26 +346,34 @@ function AttendanceTab({ assignedClasses }: { assignedClasses: any[] }) {
         </div>
       </div>
 
+      {blockReason && classId && <p className="text-sm text-muted-foreground mb-3">{blockReason}</p>}
+      {classId && sections.error && <p className="text-sm text-destructive mb-3">{sections.error}</p>}
+      {today.error && !date && <p className="text-sm text-destructive mb-3">{today.error}</p>}
+
       {!classId && <EmptyState icon={Users} title="Select a class" description="Choose a class to mark attendance." />}
 
-      {classId && students.loading && <Skeleton className="h-48" />}
+      {classId && date && (register.loading || !registerReady) && !register.error && <Skeleton className="h-48" />}
 
-      {classId && !students.loading && studentList.length === 0 && (
-        <EmptyState icon={Users} title="No students" description="No students found in this class." />
+      {classId && register.error && (
+        <EmptyState icon={Users} title="Attendance could not be loaded" description={register.error} />
+      )}
+
+      {classId && registerReady && studentList.length === 0 && (
+        <EmptyState icon={Users} title="No students" description="No active students found in this class." />
       )}
 
       {studentList.length > 0 && (
         <>
           <div className="divide-y max-h-[400px] overflow-y-auto">
             {studentList.map((s: any) => {
-              const status = marks[s.id] ?? "PRESENT";
+              const status = marks[s.id];
               return (
-                <div key={s.id} className="flex items-center justify-between py-2.5">
+                <div key={s.id} className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <span className="font-medium text-sm">{s.fullName}</span>
                     <span className="text-muted-foreground text-xs ml-2">{s.admissionNo}</span>
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex flex-wrap gap-1">
                     {(["PRESENT", "ABSENT", "LATE", "LEAVE"] as const).map((st) => (
                       <button key={st} onClick={() => setMark(s.id, st)}
                         className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-all ${status === st
@@ -353,7 +391,7 @@ function AttendanceTab({ assignedClasses }: { assignedClasses: any[] }) {
             })}
           </div>
           <div className="mt-4 flex justify-end">
-            <button onClick={save} disabled={saving}
+            <button onClick={save} disabled={saving || Boolean(blockReason)}
               className="px-6 h-10 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition disabled:opacity-50">
               {saving ? "Saving…" : "Save Attendance"}
             </button>
